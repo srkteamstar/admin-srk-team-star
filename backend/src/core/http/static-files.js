@@ -37,10 +37,13 @@ const paths = require('../config/paths');
 const BEHAVIOUR_FILE = /\.(?:js|css|html)$/i;
 
 /**
- * Vercel ignores express.static(), and its CDN serves assets and browser
- * modules from the generated root public/ directory. HTML deliberately stays
- * in the function so it still passes through securityHeaders and receives the
- * same per-document CSP as every other deployment.
+ * Vercel normally serves assets and browser modules from the generated root
+ * public/ directory. The authored frontend is also included in the function
+ * bundle, so the regular static mounts remain a safe fallback when a framework
+ * deployment routes those paths to Express instead of materialising the CDN
+ * output. HTML deliberately stays in the function so it still passes through
+ * securityHeaders and receives the same per-document CSP as every other
+ * deployment.
  *
  * Reproduce express.static's page URL mapping without turning every product
  * image into function payload: ordinary files keep their path below pages/;
@@ -100,7 +103,6 @@ function mountVercelPages(app) {
 function mountStaticFiles(app) {
     if (process.env.VERCEL) {
         mountVercelPages(app);
-        return;
     }
 
     STATIC_MOUNTS.forEach(({ urlPrefix, dir }) => {
