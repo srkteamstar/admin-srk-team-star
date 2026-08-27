@@ -19,8 +19,8 @@ const Module = require('module');
 const control = require('./harness-control');
 
 // ---- The stub dataset -------------------------------------------------------
-// Identity fixtures mirror the policy: both roles use email or phone, while
-// only administrator rows may open an admin-scoped session.
+// Identity fixtures mirror the policy: admins may use email or phone, but a
+// matching administrator password hash is also required before a session opens.
 
 const db = {
     roles: [
@@ -29,9 +29,13 @@ const db = {
     ],
     user_profiles: [
         { id: 100, full_name: 'Fake Admin', email: 'admin@example.test', phone_number: '9000000001',
-          phone_normalized: '9000000001', company: null, role_id: 1, created_at: '2026-01-01T00:00:00Z' },
+          phone_normalized: '9000000001', company: null, role_id: 1,
+          password_hash: 'scrypt$14af768da0c8b4a8f0d88351ee1d1538$409619e06ff5086fd5a253d9b03da3b1af26d2ed09851e018950c172e7f09b1d14739115e551e57e8df8e2e168806ca64e4e9e024bb4bc4914e13bdbf85b7b5e',
+          created_at: '2026-01-01T00:00:00Z' },
         { id: 101, full_name: 'Fake Admin Two', email: 'admin2@example.test', phone_number: '9000000004',
-          phone_normalized: '9000000004', company: null, role_id: 1, created_at: '2026-01-01T00:00:00Z' },
+          phone_normalized: '9000000004', company: null, role_id: 1,
+          password_hash: 'scrypt$08dc877f9f26c74d4a98a66160f55a58$343aa1f8235347f99ece0e5a798c6b6520f41f905af47467417a295b3c02712854ba3b360a5afabda2f4b637fed51b1f1e19c18c6e48667499731b8d0a8de78d',
+          created_at: '2026-01-01T00:00:00Z' },
         { id: 200, full_name: 'Fake Customer A', email: 'a@example.test', phone_number: '9000000002',
           phone_normalized: '9000000002', company: 'A Ltd', role_id: 2, created_at: '2026-01-02T00:00:00Z' },
         { id: 201, full_name: 'Fake Customer B', email: 'b@example.test', phone_number: '9000000003',

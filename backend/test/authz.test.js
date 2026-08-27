@@ -2,7 +2,7 @@
 // server (port 3456).
 //
 // WHAT THIS SUITE IS FOR: proving that the only way into this application is
-// the identifier-only administrator door, that role checks still apply, that every
+// the password-protected administrator door, that role checks still apply, that every
 // route is shut to anybody who has not come through it, and that the two
 // writes which can lock an operator out of their own console refuse to.
 //
@@ -60,7 +60,7 @@ async function req(cookies, method, path, body, extraHeaders) {
 (async () => {
     const anon = jar(), admin = jar(), admin2 = jar();
 
-    console.log('\n=== 1. THE ADMIN DOOR IS ITS OWN IDENTIFIER-ONLY ROUTE ===');
+    console.log('\n=== 1. THE ADMIN DOOR REQUIRES AN IDENTIFIER AND PASSWORD ===');
 
     // THE STOREFRONT DOOR IS NOT ON THIS ORIGIN AT ALL, which is the split's
     // strongest version of "an administrator does not sign in as a shopper":
@@ -73,13 +73,16 @@ async function req(cookies, method, path, body, extraHeaders) {
     r = await req(admin, 'POST', '/api/admin/login', {});
     check('admin login with no identifier is refused', r.status === 400, JSON.stringify(r));
 
+    r = await req(admin, 'POST', '/api/admin/login', { identifier: 'admin@example.test' });
+    check('admin login with no password is refused', r.status === 400 && r.body.field === 'password', JSON.stringify(r));
+
     // A customer identifier at the admin door is refused by the role check,
     // and an unknown one gets the identical sentence.
-    r = await req(jar(), 'POST', '/api/admin/login', { identifier: 'a@example.test' });
+    r = await req(jar(), 'POST', '/api/admin/login', { identifier: 'a@example.test', password: 'Correct Horse Battery Staple' });
     check('a customer is refused at the admin door', r.status === 401, JSON.stringify(r));
     const customerRefusal = JSON.stringify(r.body);
 
-    r = await req(jar(), 'POST', '/api/admin/login', { identifier: 'nobody@example.test' });
+    r = await req(jar(), 'POST', '/api/admin/login', { identifier: 'nobody@example.test', password: 'Correct Horse Battery Staple' });
     check('an unknown identifier gets the SAME answer as a customer (no enumeration)',
         r.status === 401 && JSON.stringify(r.body) === customerRefusal,
         customerRefusal + ' vs ' + JSON.stringify(r.body));
@@ -87,8 +90,13 @@ async function req(cookies, method, path, body, extraHeaders) {
     r = await req(admin, 'GET', '/api/customers');
     check('...and no session was started by the failed attempts', r.status === 401, JSON.stringify(r).slice(0, 80));
 
-    r = await req(admin, 'POST', '/api/admin/login', { identifier: 'admin@example.test' });
-    check('admin signs in with an email identifier only',
+    r = await req(admin, 'POST', '/api/admin/login', { identifier: 'admin@example.test', password: 'Definitely The Wrong Password' });
+    check('an administrator with the wrong password is refused', r.status === 401, JSON.stringify(r));
+    r = await req(admin, 'GET', '/api/customers');
+    check('...and the wrong password started no session', r.status === 401, JSON.stringify(r).slice(0, 80));
+
+    r = await req(admin, 'POST', '/api/admin/login', { identifier: 'admin@example.test', password: 'Correct Horse Battery Staple' });
+    check('admin signs in with an email identifier and password',
         r.status === 200 && r.body.admin && r.body.admin.role === 'admin', JSON.stringify(r).slice(0, 120));
 
     check('admin identity response carries no password field',
@@ -121,8 +129,8 @@ async function req(cookies, method, path, body, extraHeaders) {
         r.status === 200 && r.body.admin && r.body.admin.role === 'admin', JSON.stringify(r).slice(0, 120));
 
     console.log('\n=== 3. PHONE IDENTIFIERS OPEN THE SAME ADMIN DOOR ===');
-    r = await req(admin2, 'POST', '/api/admin/login', { identifier: '+91 90000 00004' });
-    check('an administrator signs in with a phone identifier only',
+    r = await req(admin2, 'POST', '/api/admin/login', { identifier: '+91 90000 00004', password: 'Second Admin Secure Pass' });
+    check('an administrator signs in with a phone identifier and password',
         r.status === 200 && r.body.admin && String(r.body.admin.id) === '101', JSON.stringify(r).slice(0, 120));
     r = await req(admin2, 'GET', '/api/customers');
     check('...and receives an administrator session', r.status === 200, JSON.stringify(r).slice(0, 80));
@@ -251,7 +259,7 @@ async function req(cookies, method, path, body, extraHeaders) {
     check('no ACAO for a foreign origin', !cors.headers.get('access-control-allow-origin'),
         String(cors.headers.get('access-control-allow-origin')));
     r = await req(anon, 'POST', '/api/admin/login',
-        { identifier: 'admin@example.test' },
+        { identifier: 'admin@example.test', password: 'Correct Horse Battery Staple' },
         { Origin: 'https://evil.example' });
     check('cross-origin state change is refused', r.status === 403, r.status + ' ' + JSON.stringify(r.body).slice(0, 60));
 

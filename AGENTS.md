@@ -56,14 +56,22 @@ public API. That is a configuration change, not a new route here.
 
 ## Authentication
 
-**One door, and it takes an identifier only.** `POST /api/admin/login` accepts
-the email address or phone number on an administrator profile. The route is
-still rate limited and still creates only an administrator-scoped session.
+**One door, and it takes an identifier plus a password.**
+`POST /api/admin/login` accepts the email address or phone number on an
+administrator profile, verifies its salted scrypt `password_hash`, and only
+then creates an administrator-scoped session. A null hash is a locked account,
+never a fallback to identifier-only access.
 
-**One answer for two failures.** No such account and not an administrator both
-return the same 401 with the same sentence. An administrator does nothing
-differently on either, so nothing is lost — and the distinction would be a move
-for somebody probing.
+**One answer for every credential failure.** No such account, not an
+administrator, no stored hash, and a wrong password all return the same 401
+with the same sentence. An administrator does nothing differently among them,
+so nothing is lost — and the distinction would be a move for somebody probing.
+
+**Passwords are never inserted as plaintext.** Run
+`npm --prefix backend run set-admin-password -- <email-or-phone>` from an
+interactive terminal. The operator command verifies the row is already an
+administrator, reads the password without echo, and writes only its salted
+scrypt hash. It never changes a role.
 
 **Nothing here can raise a role.** Changing somebody's role is a hand edit in
 the Supabase table editor. There is no route, and there should not be one.
@@ -109,6 +117,6 @@ smuggled into a structural one.
    for one process; wrong the moment there are two.
 4. **The inline handlers.** Removing `'unsafe-inline'` from `script-src` means
    extracting every `onclick=` first.
-5. **No network restriction is enforced by this application.** Identifier-only
-   login does not prove possession of the named email or phone, so a strong
-   deployment perimeter is essential in front of this internal console.
+5. **No network restriction is enforced by this application.** Password auth
+   now protects the door, but a private deployment perimeter remains worthwhile
+   defence in depth for a console with destructive routes.

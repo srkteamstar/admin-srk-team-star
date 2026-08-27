@@ -48,10 +48,24 @@ need no restart.
 
 ### Signing in
 
-There is no password or authenticator code. An administrator signs in with the
-email address or phone number on their profile. The matching profile must have
-the administrator role; changing that role remains a hand edit to
+An administrator signs in with the email address or phone number on their
+profile and that profile's password. The matching profile must already have the
+administrator role; changing that role remains a hand edit to
 `user_profiles.role_id` in the Supabase table editor.
+
+Before the first password is set, run the storefront's additive migration
+`../#2/backend/migrations/028_restore_customer_passwords.sql` against the shared
+Supabase project. Then set or replace one administrator's credential from an
+interactive terminal:
+
+```bash
+npm --prefix backend run set-admin-password -- admin@example.com
+```
+
+The prompt does not echo the password. The command refuses non-admin profiles
+and writes only a salted scrypt hash to `user_profiles.password_hash`; the
+plaintext value is never stored or logged. An administrator with a null hash is
+locked out rather than admitted without a password.
 
 ### Running both applications at once
 
@@ -120,6 +134,6 @@ own hostname. Nothing about it should be reachable from the public site.
   `robots.txt` disallows the whole origin. Neither is a security control —
   every route is enforced server-side — they simply keep an internal console
   out of somebody else's index.
-- Put it behind a strong network restriction. Identifier-only login does not
-  prove possession of an email account or phone, so the deployment perimeter
-  is an essential part of the access boundary.
+- Put it behind a strong network restriction as defence in depth. Password
+  authentication protects the application door; the perimeter reduces who can
+  reach this internal console at all.

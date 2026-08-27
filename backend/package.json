@@ -19,6 +19,7 @@
     "dev": "node --watch server.js",
     "build:css": "tailwindcss -c tailwind.config.js -i styles/tailwind.input.css -o ../frontend/assets/vendor/tailwind.build.css --minify",
     "watch:css": "tailwindcss -c tailwind.config.js -i styles/tailwind.input.css -o ../frontend/assets/vendor/tailwind.build.css --watch",
+    "set-admin-password": "node scripts/set-admin-password.js",
     "test:all": "npm run verify && npm test && npm run test:browser",
     "verify": "node ../tools/verify.js",
     "verify:links": "node ../tools/verify-links.js",

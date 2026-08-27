@@ -31,6 +31,9 @@ test('the sign-in gate is a modal boundary and the app is inert behind it', asyn
     await expect(page.locator('#admin-app-shell')).toHaveAttribute('inert', '');
 
     await expect(page.locator('#admin-identifier')).toBeVisible();
+    await expect(page.locator('#admin-identifier')).toHaveAttribute('autocomplete', 'username');
+    await expect(page.locator('#admin-password')).toBeVisible();
+    await expect(page.locator('#admin-password')).toHaveAttribute('autocomplete', 'current-password');
     await expect(page.locator('#admin-code')).toHaveCount(0);
 });
 

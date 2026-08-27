@@ -32,9 +32,9 @@
  *
  * WHAT THE SERVER WANTS
  * ---------------------
- * An administrator email or phone number. The server resolves it and only
- * opens an administrator-scoped session when the matching profile has the
- * administrator role.
+ * An administrator email or phone number plus the password stored as a one-way
+ * hash on that profile. The server checks both the role and the password before
+ * it opens an administrator-scoped session.
  *
  * 401 AND 403 ARE STILL NOT THE SAME ANSWER
  * -----------------------------------------
@@ -94,8 +94,7 @@
     const LABEL_CLASSES = 'block text-[10px] font-bold uppercase tracking-wider text-[#1f271b]/50 mb-2';
 
     // A card on the gate's near-black ground, deliberately narrow: there is
-    // one field and one button, and a wider box would only make it look like
-    // something is missing.
+    // two fields and one button.
     function cardHTML(inner) {
         return '<div class="w-full max-w-sm bg-white rounded-sm p-8 shadow-2xl">' + inner + '</div>';
     }
@@ -106,7 +105,7 @@
             '<h2 id="admin-signin-title" class="text-xl font-bold text-[#12170f] mb-2">Administrator sign in</h2>',
             '<p class="text-sm text-[#1f271b]/60 mb-6 leading-relaxed">This dashboard is separate from the store. Sign in with your administrator account.</p>',
 
-            '<form id="admin-signin-form" novalidate>',
+            '<form id="admin-signin-form" autocomplete="on" data-srk-password-manager="allow" novalidate>',
 
             // Reserved space rather than an element that appears: a banner
             // that pushes the fields down as it arrives moves the button out
@@ -115,7 +114,12 @@
 
             '    <div class="mb-6">',
             '        <label for="admin-identifier" class="' + LABEL_CLASSES + '">Email or phone</label>',
-            '        <input id="admin-identifier" name="admin-identifier" type="text" autocomplete="srk-no-autofill" class="' + FIELD_CLASSES + '" placeholder="you@example.com" />',
+            '        <input id="admin-identifier" name="username" type="text" autocomplete="username" data-srk-password-manager="allow" class="' + FIELD_CLASSES + '" placeholder="you@example.com" />',
+            '    </div>',
+
+            '    <div class="mb-6">',
+            '        <label for="admin-password" class="' + LABEL_CLASSES + '">Password</label>',
+            '        <input id="admin-password" name="password" type="password" autocomplete="current-password" data-srk-password-manager="allow" class="' + FIELD_CLASSES + '" />',
             '    </div>',
 
             '    <button id="admin-signin-submit" type="submit" class="w-full bg-[#12170f] text-white font-bold text-sm py-3 rounded-sm hover:bg-[#1f271b] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37] focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed">Sign In</button>',
@@ -249,9 +253,11 @@
         clearError();
 
         const identifierField = document.getElementById('admin-identifier');
+        const passwordField = document.getElementById('admin-password');
         const submit = document.getElementById('admin-signin-submit');
 
         const identifier = identifierField ? identifierField.value.trim() : '';
+        const password = passwordField ? passwordField.value : '';
 
         // Answered here rather than after a round trip, and only for the one
         // thing that is unambiguously wrong before one is worth making. The
@@ -259,6 +265,11 @@
         if (!identifier) {
             showError('Enter your administrator email or phone number.');
             if (identifierField) identifierField.focus({ preventScroll: true });
+            return;
+        }
+        if (!password) {
+            showError('Enter your administrator password.');
+            if (passwordField) passwordField.focus({ preventScroll: true });
             return;
         }
         if (submit) {
@@ -274,7 +285,7 @@
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ identifier: identifier })
+                body: JSON.stringify({ identifier: identifier, password: password })
             });
             data = await response.json().catch(() => ({}));
         } catch (error) {
@@ -294,7 +305,10 @@
 
             showError((data && data.error) || 'Could not sign you in.');
 
-            if (identifierField) identifierField.focus({ preventScroll: true });
+            if (passwordField) {
+                passwordField.value = '';
+                passwordField.focus({ preventScroll: true });
+            }
             return;
         }
 

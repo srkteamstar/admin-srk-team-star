@@ -3,16 +3,12 @@
  * ============================================================================
  *
  *
- * Replaces the localStorage stand-in that customer-session-module.js used to
- * be. The tables are user_profiles (contact details) and shipping_addresses
- * (exactly one row per customer, enforced by a unique index in migration
- * 011) — see that file for the schema reasoning.
+ * Owns the administrator door against user_profiles and the session it opens.
  *
- * IDENTIFIER-BASED CUSTOMER ACCESS
- * --------------------------------
- * Sign-in resolves an email or phone identifier and starts a customer-scoped
- * session. Administrators are refused here and must use their identifier-only
- * dashboard route.
+ * PASSWORD-BASED ADMINISTRATOR ACCESS
+ * -----------------------------------
+ * Sign-in resolves an email or phone identifier, checks the administrator role
+ * and verifies password_hash before starting an administrator-scoped session.
  * ==========================================
  *
  * Digits only, so "+91 89015 03544", "089015 03544" and "8901503544" all
@@ -25,24 +21,20 @@
  *
  * WHAT THIS MODULE OWNS
  *   user_profiles as the ACCOUNT (modules/customers owns the administrator's
- *   view of the same table), shipping_addresses, and both sign-in doors.
+ *   management view of the same table), and the dashboard sign-in door.
  *
- *   POST /api/auth/register     POST /api/admin/login
- *   POST /api/auth/login        GET  /api/admin/session
+ *   POST /api/admin/login
+ *   GET  /api/admin/session
  *   POST /api/auth/logout
- *   GET  /api/auth/me
- *   PATCH /api/auth/me
  *
  * NOTHING HERE CAN RAISE A ROLE, and that is the whole admin boundary.
- * Registration hard-codes the customer role, PATCH /api/auth/me refuses
- * role_id, POST /api/checkout refuses to adopt or create a non-customer
- * profile, and no route or UI grants admin. Making somebody an administrator
- * is a hand edit in the Supabase table editor.
+ * No route or UI grants admin. Making somebody an administrator is a hand edit
+ * in the Supabase table editor; the credential setter refuses to change roles.
  *
  * READING A SESSION IS NOT THIS MODULE'S JOB. core/security/guards.js does
  * that, and every other module imports it from there. This module is the only
  * one that OPENS a session, which is why both doors are here, both are behind
- * one rate limiter, and there are exactly two of them.
+ * one rate limiter, and there is exactly one sign-in route.
  */
 const express = require('express');
 const { adminAuthController } = require('./controllers/admin-auth.controller');

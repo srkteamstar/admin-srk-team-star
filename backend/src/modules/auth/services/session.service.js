@@ -2,15 +2,12 @@
  * modules/auth/services/session.service.js - resolving, and opening
  * ============================================================================
  *
- * THESE TWO ARE DELIBERATELY SEPARATE FUNCTIONS, and the separation is the
- * seam a real second factor for CUSTOMERS drops into.
+ * THESE TWO ARE DELIBERATELY SEPARATE FUNCTIONS. Password verification belongs
+ * between them: resolving a row is never enough to open a session.
  *
  * resolveIdentifier() answers "whose account is this?". startSession() answers
- * "let them in". Today the storefront login calls one and then the other with
- * nothing in between, which is exactly the weakness written up in the module
- * header: knowing an identifier is owning the account. Mailing or texting a
- * one-time code is a step BETWEEN these two calls - it needs no change to the
- * route's shape, to the browser module, or to the overlay.
+ * "let them in". The admin controller verifies password_hash between those
+ * calls, then and only then starts the administrator-scoped session.
  *
  * startSession() regenerates the session first. That is what makes signing in
  * at one door sign you out of the other: a browser is a customer or an
@@ -56,8 +53,7 @@ function startSession(req, customerId, scope) {
     });
 }
 
-// Both roles use identifier-based access by product decision. Administrators
-// still use a separate dashboard-only route; the storefront route never
-// creates an admin session.
+// Administrators use the separate dashboard-only route and must pass its
+// password check; the storefront route never creates an admin session.
 
 module.exports = { resolveIdentifier, startSession };

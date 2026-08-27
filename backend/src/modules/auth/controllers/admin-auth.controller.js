@@ -2,7 +2,7 @@
  * modules/auth/controllers/admin-auth.controller.js - the dashboard door
  * ============================================================================
  *
- *   POST /api/admin/login     administrator identifier
+ *   POST /api/admin/login     administrator identifier + password
  *   GET  /api/admin/session   is an administrator signed in?
  *   POST /api/auth/logout     destroy the session
  *
@@ -16,14 +16,21 @@
  * would forget to add to.
  *
  * The route accepts the same kind of identifier as the storefront door, but
- * it only opens an administrator-scoped session after checking the role.
+ * it only opens an administrator-scoped session after checking both the role
+ * and the password hash stored on that administrator's profile.
  */
 const express = require('express');
 const { sessionScope, sessionProfile, isBlocked, BLOCKED_MESSAGE, roleNameById } = require('../../../core/security/guards');
 const { trimmed } = require('../../../shared/validation');
 const { adminIdentity } = require('../services/profile-view.service');
 const { resolveIdentifier, startSession } = require('../services/session.service');
+const { passwordProblem, verifyAdminPassword } = require('../services/admin-password.service');
 const { authLimiter } = require('../infrastructure/auth-rate-limit');
+
+// A valid scrypt value used for accounts that do not exist, are not admins, or
+// have no credential. Performing the same expensive verification keeps the
+// generic refusal from becoming a useful timing oracle.
+const REFUSAL_PASSWORD_HASH = 'scrypt$14af768da0c8b4a8f0d88351ee1d1538$409619e06ff5086fd5a253d9b03da3b1af26d2ed09851e018950c172e7f09b1d14739115e551e57e8df8e2e168806ca64e4e9e024bb4bc4914e13bdbf85b7b5e';
 
 /** @returns {import('express').Router} */
 function adminAuthController() {
@@ -41,20 +48,25 @@ function adminAuthController() {
     // created, plus a redirect to carry the admin back out of a storefront they
     // had no business landing in.
     //
-    // Same authLimiter as the storefront door, deliberately. The two share one
-    // per-IP budget; a separate one here would just hand an attacker twice as many
-    // attempts — the opposite of the reasoning that split formLimiter from
-    // quoteLimiter, because there the two budgets served different honest users.
+    // The route has its own per-IP budget. There is no storefront door in this
+    // process and no unrelated route that should consume the same counter.
     router.post('/api/admin/login', authLimiter, async (req, res) => {
         const identifier = trimmed(req.body.identifier);
+        const password = req.body.password;
 
         if (!identifier) {
             return res.status(400).json({ field: 'identifier', error: "Enter your administrator email or phone number." });
         }
+        const problem = passwordProblem(password);
+        if (problem) return res.status(400).json({ field: 'password', error: problem });
 
         try {
             const profile = await resolveIdentifier(identifier);
             const role = profile ? await roleNameById(profile.role_id) : null;
+            const candidateHash = profile && role === 'admin' && profile.password_hash
+                ? profile.password_hash
+                : REFUSAL_PASSWORD_HASH;
+            const passwordMatches = await verifyAdminPassword(password, candidateHash);
 
             // ONE ANSWER FOR "no such account" AND "not an administrator" —
             // deliberately the opposite of what the storefront door does.
@@ -66,10 +78,10 @@ function adminAuthController() {
             // nothing is lost by saying the same thing to all of them.
             const refuse = () => res.status(401).json({
                 field: 'identifier',
-                error: "That is not an administrator account."
+                error: "Those administrator credentials are not valid."
             });
 
-            if (!profile || role !== 'admin') return refuse();
+            if (!profile || role !== 'admin' || !profile.password_hash || !passwordMatches) return refuse();
             if (isBlocked(profile)) return res.status(403).json({ error: BLOCKED_MESSAGE });
 
             // 'admin' is what separates this session from a storefront one, and

@@ -2,11 +2,9 @@
  * modules/auth/infrastructure/auth-rate-limit.js
  * ============================================================================
  *
- * ONE INSTANCE SHARED BY BOTH DOORS, which is the opposite call to the one
- * that split the enquiry and quote limiters - and deliberately so. There, two
- * budgets served two different honest users. Here, a separate budget for the
- * admin door would only hand an attacker twice as many attempts at the same
- * user_profiles table.
+ * One limiter dedicated to the one administrator sign-in route. It bounds both
+ * identifier probing and password guessing without coupling the budget to an
+ * unrelated form.
  */
 const rateLimit = require('express-rate-limit');
 
