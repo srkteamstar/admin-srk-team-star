@@ -22,6 +22,7 @@ playwright-report/
 # frontend/; committing this directory would duplicate hundreds of megabytes.
 /public/
 /.vercel/
+.env.local
 
 # Editor and OS noise.
 .DS_Store
