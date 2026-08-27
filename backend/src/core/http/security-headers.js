@@ -18,24 +18,14 @@
  *               and project image the administrator is looking at while they
  *               work is served from that bucket.
  *
- *   connect-src 'self', plus the storefront's origin WHEN STOREFRONT_URL IS
- *               SET. connect-src is this site's strongest single control — it
- *               is the exfiltration channel — so the storefront is named only
- *               when a deployment has deliberately said where the storefront
- *               is, and an unset variable leaves the directive at 'self'.
- *               Nothing on the dashboard calls the storefront's API today: the
- *               two applications meet at the database, and the only link
- *               between them is a navigation (GET /storefront). The grant is
- *               here so that a future read against the public catalogue is a
- *               configuration change rather than a security review, and it is
- *               scoped to one origin rather than left open.
+ *   connect-src 'self' only. The storefront link is navigation, not an API
+ *               relationship. Keeping this directive same-origin also closes
+ *               the most useful exfiltration route after an injected script.
  *
  * Everything else is refused. The dashboard uses no powerful browser
  * capability at all, so Permissions-Policy denies the lot with `=()` — an
  * empty allow list, not even self.
  */
-const { STOREFRONT_ORIGIN } = require('./storefront-link');
-
 const SUPABASE_STORAGE_ORIGIN = (() => {
     try {
         return new URL(process.env.SUPABASE_URL).origin;
@@ -57,7 +47,7 @@ const CSP = [
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:" + (SUPABASE_STORAGE_ORIGIN ? ' ' + SUPABASE_STORAGE_ORIGIN : ''),
     "font-src 'self'",
-    "connect-src 'self'" + (STOREFRONT_ORIGIN ? ' ' + STOREFRONT_ORIGIN : ''),
+    "connect-src 'self'",
     "form-action 'self'",
     "base-uri 'none'",
     "object-src 'none'",

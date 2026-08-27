@@ -325,17 +325,12 @@ window.renderCustomersView = function() {
     }).length;
     const blocked = data.filter(c => c.isBlocked).length;
 
+    const ui = window.adminDashboardUI;
     const statsHtml = `
-        <div class="grid grid-cols-3 gap-4 mb-8 max-w-3xl">
-            <div class="bg-white border-b-2 border-b-[#d4af37] p-5 shadow-sm">
-                <h3 class="text-2xl font-bold">${total}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Total Customers</p>
-            </div>
-            <div class="bg-white border-b-2 border-b-blue-500 p-5 shadow-sm">
-                <h3 class="text-2xl font-bold">${newThisMonth}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">New This Month</p>
-            </div>
-            <div class="bg-white border-b-2 ${blocked ? 'border-b-red-500' : 'border-b-[#12170f]/15'} p-5 shadow-sm">
-                <h3 class="text-2xl font-bold ${blocked ? 'text-red-600' : ''}">${blocked}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Blocked</p>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            ${ui.stat('Total customers', total, 'All registered profiles', 'gold', 'customers')}
+            ${ui.stat('New this month', newThisMonth, 'Recently joined customers', 'blue', 'clock')}
+            ${ui.stat('Blocked', blocked, blocked ? 'Profiles requiring review' : 'No restricted profiles', blocked ? 'red' : 'green', blocked ? 'warning' : 'check')}
         </div>`;
 
     const tableHeaders = `
@@ -384,16 +379,22 @@ window.renderCustomersView = function() {
     }
 
     container.innerHTML = `
-        <div class="mb-10"><h2 class="text-3xl font-bold tracking-tight text-[#12170f]">Customers</h2><p class="text-sm text-[#1f271b]/60 mt-2">Accounts created through the store, with their order history.</p></div>
+        <div class="max-w-7xl mx-auto pb-10">
+        ${ui.hero('Customer relationships', 'Customers', 'Understand every account through its order history and current access state.')}
         ${statsHtml}
         ${customerActionBannerHTML()}
-        <div class="bg-white border border-[#12170f]/10 rounded-sm mb-6 shadow-sm overflow-hidden flex flex-col relative">
+        <section class="bg-white border border-[#12170f]/10 rounded-xl mb-6 shadow-[0_10px_35px_rgba(18,23,15,0.04)] overflow-hidden flex flex-col relative">
+            <div class="px-5 py-5 border-b border-[#12170f]/10">
+                <p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Account directory</p>
+                <h3 class="text-xl text-[#12170f] mt-1">Customer profiles</h3>
+            </div>
             <div class="overflow-x-auto overflow-y-auto flex-1 min-h-[420px] max-h-[calc(100vh-330px)] pb-16">
                 <table class="w-[900px] xl:w-full text-left border-collapse table-fixed">
                     <thead><tr class="text-[10px] text-[#12170f]/40 uppercase tracking-widest font-bold">${tableHeaders}</tr></thead>
                     <tbody id="customers-tbody" class="text-sm font-semibold divide-y divide-[#12170f]/5">${rows}</tbody>
                 </table>
             </div>
+        </section>
         </div>
     `;
 };

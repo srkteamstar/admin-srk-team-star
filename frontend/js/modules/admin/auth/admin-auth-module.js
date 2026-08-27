@@ -87,7 +87,7 @@
     // MARKUP
     // ------------------------------------------------------------------
     const FIELD_CLASSES =
-        'w-full bg-white border border-[#12170f]/15 rounded-sm px-4 py-3 text-sm font-bold text-[#12170f] ' +
+        'w-full bg-white border border-[#12170f]/15 rounded-lg px-4 py-3 text-sm font-bold text-[#12170f] ' +
         'placeholder:font-medium placeholder:text-[#1f271b]/35 focus:outline-none focus:border-[#d4af37] ' +
         'focus:ring-2 focus:ring-[#d4af37]/30 transition-colors';
 
@@ -96,7 +96,9 @@
     // A card on the gate's near-black ground, deliberately narrow: there is
     // two fields and one button.
     function cardHTML(inner) {
-        return '<div class="w-full max-w-sm bg-white rounded-sm p-8 shadow-2xl">' + inner + '</div>';
+        return '<div class="relative overflow-hidden w-full max-w-sm bg-white rounded-2xl border border-white/10 p-8 shadow-[0_30px_80px_rgba(0,0,0,0.3)]">' +
+            '<div class="absolute -right-12 -top-16 w-40 h-40 rounded-full bg-[#d4af37]/10"></div>' +
+            '<div class="relative">' + inner + '</div></div>';
     }
 
     function signInHTML() {
@@ -122,7 +124,7 @@
             '        <input id="admin-password" name="password" type="password" autocomplete="current-password" data-srk-password-manager="allow" class="' + FIELD_CLASSES + '" />',
             '    </div>',
 
-            '    <button id="admin-signin-submit" type="submit" class="w-full bg-[#12170f] text-white font-bold text-sm py-3 rounded-sm hover:bg-[#1f271b] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37] focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed">Sign In</button>',
+            '    <button id="admin-signin-submit" type="submit" class="w-full bg-[#12170f] text-white font-bold text-sm py-3 rounded-lg hover:bg-[#1f271b] hover:-translate-y-0.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37] focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed">Sign In</button>',
             '</form>',
 
             '<p class="text-[11px] text-[#1f271b]/40 mt-4 leading-relaxed">Administrator access is granted directly in the database.</p>'

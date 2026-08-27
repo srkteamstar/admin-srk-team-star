@@ -20,7 +20,7 @@
  * Same shape as quotations.js: a `window.orderData` array, `window.
  * loadOrders()` / `window.renderOrders()` / `window.renderOrdersView()`
  * split, smooth DOM updaters instead of a full re-render on status change,
- * sticky table head, per-row hover menu for the status actions that
+ * sticky table head, per-row click menu for the status actions that
  * genuinely exist. Error display uses products.js's `window.orderLoadError`
  * + inline retry-row-in-table instead of quotations.js's whole-container
  * swap.
@@ -95,6 +95,46 @@ window.orderStatusOptions = function(status) {
 // ==========================================
 window.orderData = [];
 window.orderLoadError = null;
+window.openOrderActionsId = null;
+
+window.shippedOrderRevenue = function(orders) {
+    return (Array.isArray(orders) ? orders : [])
+        .filter(order => order && order.status === 'Shipped')
+        .reduce((sum, order) => sum + (Number(order.netAmount) || 0), 0);
+};
+
+window.closeOrderActionsMenu = function() {
+    document.querySelectorAll('[data-order-actions-menu]').forEach(menu => menu.classList.add('hidden'));
+    document.querySelectorAll('[data-order-actions-button]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+    window.openOrderActionsId = null;
+};
+
+window.toggleOrderActionsMenu = function(event, id) {
+    event.stopPropagation();
+
+    const menu = document.getElementById(`order-actions-menu-${id}`);
+    const button = document.getElementById(`order-actions-button-${id}`);
+    if (!menu || !button) return;
+
+    const wasOpen = window.openOrderActionsId == id && !menu.classList.contains('hidden');
+    window.closeOrderActionsMenu();
+    if (wasOpen) return;
+
+    menu.classList.remove('hidden');
+    button.setAttribute('aria-expanded', 'true');
+    window.openOrderActionsId = id;
+
+    const firstAction = menu.querySelector('button');
+    if (firstAction) firstAction.focus({ preventScroll: true });
+};
+
+document.addEventListener('click', () => window.closeOrderActionsMenu());
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || window.openOrderActionsId === null) return;
+    const button = document.getElementById(`order-actions-button-${window.openOrderActionsId}`);
+    window.closeOrderActionsMenu();
+    if (button) button.focus({ preventScroll: true });
+});
 
 // ==========================================
 // 2. FETCH & DATA MAPPING
@@ -163,7 +203,7 @@ window.findOrder = function(id) {
 // ==========================================
 window.refreshOrderStatsDOM = function() {
     const total = window.orderData.length;
-    const revenue = window.orderData.reduce((sum, o) => sum + (Number(o.netAmount) || 0), 0);
+    const revenue = window.shippedOrderRevenue(window.orderData);
 
     const setText = (elementId, value) => {
         const node = document.getElementById(elementId);
@@ -252,17 +292,16 @@ window.renderOrdersView = function() {
     const container = document.getElementById('main-content');
     if (!container) return;
 
-    const total = data.length;
-    const revenue = data.reduce((sum, o) => sum + (Number(o.netAmount) || 0), 0);
+    window.closeOrderActionsMenu();
 
+    const total = data.length;
+    const revenue = window.shippedOrderRevenue(data);
+
+    const ui = window.adminDashboardUI;
     const statsHtml = `
-        <div class="grid grid-cols-2 gap-4 mb-8 max-w-2xl">
-            <div class="bg-white border-b-2 border-b-[#d4af37] p-5 shadow-sm">
-                <h3 id="stat-order-total" class="text-2xl font-bold transition-all duration-300">${total}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Total Orders</p>
-            </div>
-            <div class="bg-white border-b-2 border-b-green-500 p-5 shadow-sm">
-                <h3 id="stat-order-revenue" class="text-2xl font-bold transition-all duration-300">${window.formatAmount ? window.formatAmount(revenue) : `₹ ${revenue}`}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Total Revenue</p>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 max-w-3xl">
+            ${ui.stat('Total orders', total, 'Every order in the fulfilment pipeline', 'gold', 'orders', 'stat-order-total')}
+            ${ui.stat('Shipped revenue', window.formatAmount ? window.formatAmount(revenue) : `₹ ${revenue}`, 'Revenue recognised once an order ships', 'green', 'revenue', 'stat-order-revenue')}
         </div>`;
 
     const tableHeaders = `
@@ -289,7 +328,7 @@ window.renderOrdersView = function() {
             const isActiveRow = window.app && window.app.activeItemId == o.id;
 
             const menuItems = window.orderStatusOptions(o.status).map(s => `
-                <button id="order-menu-${s.toLowerCase().replace(/ /g, '-')}-${o.id}" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', '${s}')" class="px-4 py-2.5 text-left text-xs font-bold hover:bg-gray-50 border-b border-[#12170f]/5 transition-colors duration-300 ${s === o.status ? ORDER_STATUS_CLASSES[s].menu : 'text-[#12170f]'}">Mark as ${s}</button>`).join('');
+                <button role="menuitem" id="order-menu-${s.toLowerCase().replace(/ /g, '-')}-${o.id}" onclick="event.stopPropagation(); window.closeOrderActionsMenu(); updateOrderStatus('${o.id}', '${s}')" class="block w-full px-4 py-2.5 text-left text-xs font-bold hover:bg-gray-50 border-b border-[#12170f]/5 transition-colors duration-300 ${s === o.status ? ORDER_STATUS_CLASSES[s].menu : 'text-[#12170f]'}">Mark as ${s}</button>`).join('');
 
             return `
             <tr id="order-row-${o.id}" class="transition-all duration-500 cursor-pointer ${isActiveRow ? 'bg-[#d4af37]/5 border-l-2 border-l-[#d4af37]' : 'hover:bg-gray-50/50 border-l-2 border-l-transparent'} group" onclick="window.handleOrderAction('${o.id}')">
@@ -304,11 +343,11 @@ window.renderOrdersView = function() {
                 <td class="py-4 px-5 font-bold text-[#12170f] truncate">${window.formatAmount ? window.formatAmount(o.netAmount) : o.netAmount}</td>
                 <td class="py-4 px-5 truncate">${statusBadge}</td>
                 <td class="py-4 px-5 text-right relative overflow-visible">
-                    <div class="inline-block text-left group/menu cursor-pointer">
-                        <button onclick="event.stopPropagation();" class="text-[#1f271b]/40 hover:text-[#d4af37] focus:outline-none p-1 rounded-sm transition-colors">
+                    <div class="inline-block text-left">
+                        <button id="order-actions-button-${o.id}" data-order-actions-button type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="order-actions-menu-${o.id}" aria-label="Actions for order ${escapeOrderText(o.orderNumber)}" onclick="window.toggleOrderActionsMenu(event, '${o.id}')" class="text-[#1f271b]/40 hover:text-[#d4af37] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37] p-1 rounded-sm transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                         </button>
-                        <div class="absolute right-8 top-10 mt-1 w-44 bg-white border border-[#12170f]/10 rounded-sm shadow-md opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all z-20 overflow-hidden flex flex-col text-left">
+                        <div id="order-actions-menu-${o.id}" data-order-actions-menu role="menu" onclick="event.stopPropagation()" class="hidden absolute right-8 top-10 mt-1 w-44 bg-white border border-[#12170f]/10 rounded-sm shadow-md z-20 overflow-hidden flex-col text-left">
                             ${menuItems}
                         </div>
                     </div>
@@ -318,18 +357,21 @@ window.renderOrdersView = function() {
     }
 
     container.innerHTML = `
-        <div class="mb-10">
-            <h2 class="text-3xl font-bold tracking-tight text-[#12170f]">Orders</h2>
-            <p class="text-sm text-[#1f271b]/60 mt-2">Every order placed through the store, with fulfillment status you control here.</p>
-        </div>
+        <div class="max-w-7xl mx-auto pb-10">
+        ${ui.hero('Store operations', 'Orders', 'Track every purchase from payment through fulfilment and delivery.')}
         ${statsHtml}
-        <div class="bg-white border border-[#12170f]/10 rounded-sm mb-6 shadow-sm overflow-hidden flex flex-col relative">
+        <section class="bg-white border border-[#12170f]/10 rounded-xl mb-6 shadow-[0_10px_35px_rgba(18,23,15,0.04)] overflow-hidden flex flex-col relative">
+            <div class="px-5 py-5 border-b border-[#12170f]/10">
+                <p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Fulfilment queue</p>
+                <h3 class="text-xl text-[#12170f] mt-1">All orders</h3>
+            </div>
             <div class="overflow-x-auto overflow-y-auto flex-1 min-h-[420px] max-h-[calc(100vh-330px)] pb-16">
                 <table class="w-[1000px] xl:w-full text-left border-collapse table-fixed">
                     <thead><tr class="text-[10px] text-[#12170f]/40 uppercase tracking-widest font-bold">${tableHeaders}</tr></thead>
                     <tbody id="orders-tbody" class="text-sm font-semibold divide-y divide-[#12170f]/5">${rows}</tbody>
                 </table>
             </div>
+        </section>
         </div>
     `;
 };

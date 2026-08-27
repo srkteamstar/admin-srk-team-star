@@ -281,17 +281,12 @@ window.renderEnquiryView = function(type) {
     const progress = data.filter(t => t.status === 'In Progress').length;
     const resolved = data.filter(t => t.status === 'Resolved').length;
 
+    const ui = window.adminDashboardUI;
     const statsHtml = `
-        <div class="grid grid-cols-3 gap-4 mb-8">
-            <div class="bg-white border-b-2 border-b-yellow-500 p-5 shadow-sm">
-                <h3 id="stat-tech-open" class="text-2xl font-bold transition-all duration-300">${open}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Open Tickets</p>
-            </div>
-            <div class="bg-white border-b-2 border-b-blue-500 p-5 shadow-sm">
-                <h3 id="stat-tech-progress" class="text-2xl font-bold transition-all duration-300">${progress}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">In Progress</p>
-            </div>
-            <div class="bg-white border-b-2 border-b-green-500 p-5 shadow-sm">
-                <h3 id="stat-tech-resolved" class="text-2xl font-bold transition-all duration-300">${resolved}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Resolved</p>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            ${ui.stat('Open tickets', open, 'Awaiting first action', 'gold', 'support', 'stat-tech-open')}
+            ${ui.stat('In progress', progress, 'Currently being handled', 'blue', 'clock', 'stat-tech-progress')}
+            ${ui.stat('Resolved', resolved, 'Completed support requests', 'green', 'check', 'stat-tech-resolved')}
         </div>`;
 
     // STRICT WIDTH ASSIGNMENT & STICKY HEADERS FIX
@@ -348,11 +343,14 @@ window.renderEnquiryView = function(type) {
 
     // OVERFLOW SCROLL & TABLE-FIXED FIX
     container.innerHTML = `
-        <div class="mb-10">
-            <h2 class="text-3xl font-bold tracking-tight text-[#12170f]">Technical Support</h2>
-        </div>
+        <div class="max-w-7xl mx-auto pb-10">
+        ${ui.hero('Customer care', 'Technical Support', 'Triage incoming issues, keep customers informed and close the loop.')}
         ${statsHtml}
-        <div class="bg-white border border-[#12170f]/10 rounded-sm mb-6 shadow-sm overflow-hidden flex flex-col relative">
+        <section class="bg-white border border-[#12170f]/10 rounded-xl mb-6 shadow-[0_10px_35px_rgba(18,23,15,0.04)] overflow-hidden flex flex-col relative">
+            <div class="px-5 py-5 border-b border-[#12170f]/10">
+                <p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Support queue</p>
+                <h3 class="text-xl text-[#12170f] mt-1">All tickets</h3>
+            </div>
             <!-- Fixed viewport, not sized to the rows. See the longer note on the
                  same element in quotations.js: min-h holds a consistent height
                  and stops a one-row table raising a vertical scrollbar it has
@@ -365,6 +363,7 @@ window.renderEnquiryView = function(type) {
                     <tbody id="enquiries-tbody" class="text-sm font-semibold divide-y divide-[#12170f]/5">${rows}</tbody>
                 </table>
             </div>
+        </section>
         </div>
     `;
 };

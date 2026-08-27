@@ -9,7 +9,7 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
-const { upload } = require('../../../core/uploads/image-upload');
+const { upload, hasValidImageSignature } = require('../../../core/uploads/image-upload');
 const { slugify } = require('../../../shared/text');
 const { CATEGORY_BUCKET, fetchCategoryRows, withImageUrl } = require('../infrastructure/category.repository');
 
@@ -71,6 +71,10 @@ function adminCategoriesController() {
         });
     }, async (req, res) => {
         const { id, name, url_slug, description, parent_id, is_featured, is_active, remove_image } = req.body;
+
+        if (req.file && !hasValidImageSignature(req.file)) {
+            return res.status(400).json({ error: "The uploaded file is not a valid AVIF or WebP image." });
+        }
 
         if (!name || !name.trim()) {
             return res.status(400).json({ error: "Category name is required." });

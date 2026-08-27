@@ -47,10 +47,10 @@ Three things refuse it, on purpose:
 - `tools/verify-boundaries.js` prints every cross-module edge, so a new one is
   visible rather than discovered later.
 
-If the console genuinely needs to read something the storefront publishes, the
-grant already exists: `STOREFRONT_URL` puts that origin in `connect-src` and in
-the CORS allow list, and the call is a `fetch` from the page to the store's own
-public API. That is a configuration change, not a new route here.
+`STOREFRONT_URL` is navigation only: it powers `GET /storefront`. The admin API
+and browser `connect-src` are same-origin by design, so a future browser fetch
+to the storefront is a security review and an explicit policy change rather
+than a dormant cross-origin grant.
 
 ---
 

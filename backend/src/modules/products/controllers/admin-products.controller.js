@@ -11,7 +11,7 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
-const { upload } = require('../../../core/uploads/image-upload');
+const { upload, hasValidImageSignature } = require('../../../core/uploads/image-upload');
 const { slugify } = require('../../../shared/text');
 const { isMissingRelation, isMissingColumn, isPermissionDenied } = require('../../../core/database/postgrest-errors');
 const { PRODUCT_BUCKET, fetchProductRows, withProductImages } = require('../infrastructure/product.repository');
@@ -84,6 +84,11 @@ function adminProductsController() {
             is_featured, is_best_seller, is_new_arrival, is_active,
             main_slot, remove_slots
         } = req.body || {};
+
+        const uploadedImages = Object.values(req.files || {}).flat();
+        if (uploadedImages.some(file => !hasValidImageSignature(file))) {
+            return res.status(400).json({ error: "Every uploaded file must be a valid AVIF or WebP image." });
+        }
 
         if (!name || !name.trim()) {
             return res.status(400).json({ error: "Product name is required." });

@@ -179,27 +179,20 @@ window.paintCategories = function() {
         }).join('');
     }
 
+    const ui = window.adminDashboardUI;
     container.innerHTML = `
-        <div class="mb-10"><h2 class="text-3xl font-bold tracking-tight text-[#12170f]">Categories</h2><p class="text-sm text-[#1f271b]/60 mt-2">Organize your products with smart categories.</p></div>
-
-        <!-- Summary Cards + Primary Action -->
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
-            <div class="flex flex-wrap items-center gap-4">
-                <div class="bg-white border border-[#12170f]/10 p-5 rounded-sm shadow-sm flex items-center gap-4 w-60">
-                    <div class="w-12 h-12 rounded-sm bg-[#d4af37]/10 border border-[#d4af37]/20 text-[#d4af37] flex items-center justify-center shrink-0"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg></div>
-                    <div class="min-w-0"><h3 class="text-2xl font-bold text-[#12170f] leading-none">${total}</h3><p class="text-[10px] font-bold uppercase tracking-wider text-[#12170f]/40 mt-1 truncate">Total Categories</p></div>
-                </div>
-                <div class="bg-white border border-[#12170f]/10 p-5 rounded-sm shadow-sm flex items-center gap-4 w-60">
-                    <div class="w-12 h-12 rounded-sm bg-green-50 border border-green-100 text-green-600 flex items-center justify-center shrink-0"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>
-                    <div class="min-w-0"><h3 class="text-2xl font-bold text-[#12170f] leading-none">${active}</h3><p class="text-[10px] font-bold uppercase tracking-wider text-[#12170f]/40 mt-1 truncate">Active Categories</p></div>
-                </div>
-            </div>
-            <button onclick="window.handleCategoryAction('new')" class="shrink-0 whitespace-nowrap bg-[#420c14] text-white px-5 py-3 rounded-sm text-sm font-bold hover:bg-[#5e1220] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#420c14]/40 flex items-center gap-2 shadow-sm">
-                <svg class="w-4 h-4 shrink-0" stroke="#ffffff" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg> Add Category
-            </button>
+        <div class="max-w-7xl mx-auto pb-10">
+        ${ui.hero('Catalogue structure', 'Categories', 'Organise the catalogue into clear, useful collections for shoppers.', ui.primaryAction('Add category', "window.handleCategoryAction('new')"))}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 max-w-3xl">
+            ${ui.stat('Total categories', total, 'All catalogue groups', 'gold', 'categories')}
+            ${ui.stat('Active categories', active, `${total - active} currently hidden`, 'green', 'check')}
         </div>
 
-        <div class="bg-white border border-[#12170f]/10 rounded-sm overflow-visible mb-6">
+        <section class="bg-white border border-[#12170f]/10 rounded-xl overflow-visible mb-6 shadow-[0_10px_35px_rgba(18,23,15,0.04)]">
+            <div class="px-5 py-5 border-b border-[#12170f]/10">
+                <p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Catalogue navigation</p>
+                <h3 class="text-xl text-[#12170f] mt-1">Category list</h3>
+            </div>
             <table class="w-full text-left border-collapse">
                 <thead><tr class="bg-[#f8fafc] border-b border-[#12170f]/10 text-xs text-[#12170f]/40 uppercase tracking-wide font-bold">
                     <th class="py-4 px-5 w-24">Image</th><th class="py-4 px-5">Category Name</th>
@@ -207,6 +200,7 @@ window.paintCategories = function() {
                 </tr></thead>
                 <tbody class="text-sm font-semibold divide-y divide-[#12170f]/5">${rows}</tbody>
             </table>
+        </section>
         </div>
     `;
 };

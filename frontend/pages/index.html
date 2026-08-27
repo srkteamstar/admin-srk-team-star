@@ -14,10 +14,27 @@
     <script src="/js/platform/responsive-navigation-module.js"></script>
     <script src="/js/modules/admin/auth/admin-auth-module.js"></script>
 <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; color: #1f271b; font-family: "Manrope", sans-serif; font-weight: 500; }
+        :root { --admin-ink: #12170f; --admin-copy: #1f271b; --admin-gold: #d4af37; --admin-wine: #420c14; --admin-canvas: #f6f7f4; }
+        * { margin: 0; padding: 0; box-sizing: border-box; color: var(--admin-copy); font-family: "Manrope", sans-serif; font-weight: 500; }
         h1, h2, h3, h4, h5, h6 { color: #12170f; font-family: "Schibsted Grotesk", sans-serif; font-weight: 700; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        #admin-auth-gate { background: radial-gradient(circle at 82% 12%, rgba(212,175,55,.15), transparent 28%), radial-gradient(circle at 12% 88%, rgba(66,12,20,.34), transparent 32%), var(--admin-ink); }
+        #admin-app-shell > aside { box-shadow: 10px 0 32px rgba(18,23,15,.035); }
+        #dynamic-view { background: radial-gradient(circle at 88% 0, rgba(212,175,55,.045), transparent 24%), var(--admin-canvas); }
+        .nav-btn, .nav-sub-btn { border: 1px solid transparent; min-height: 42px; }
+        .nav-btn[aria-current="page"], .nav-sub-btn[aria-current="page"] { border-color: rgba(212,175,55,.18); box-shadow: inset 3px 0 0 #d4af37; }
+        #main-content table tbody tr { transition: background-color .2s ease, box-shadow .2s ease, opacity .2s ease; }
+        #main-content table tbody tr:hover { box-shadow: inset 3px 0 0 rgba(212,175,55,.7); }
+        #main-content section:has(> table) { overflow-x: auto; }
+        #details-drawer { box-shadow: -18px 0 45px rgba(18,23,15,.1); }
+        #details-drawer input, #details-drawer select, #details-drawer textarea { border-radius: .625rem !important; }
+        #details-drawer .rounded-sm, #main-content .rounded-sm, #profile-dropdown { border-radius: .625rem !important; }
+        button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 2px; }
+        @media (max-width: 767px) {
+            #main-content section:has(> table) > table { min-width: 760px; }
+            #main-content section:has(> table) > div:first-child { position: sticky; left: 0; min-width: calc(100vw - 2.5rem); }
+        }
     </style>
     <link rel="stylesheet" href="/assets/vendor/fonts/fonts.css">
 </head>
@@ -167,6 +184,7 @@
                 this.currentTab = tabName; // Update internal state
                 
                 document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
+                    btn.removeAttribute('aria-current');
                     btn.classList.remove('text-[#d4af37]', 'bg-[#d4af37]/5');
                     btn.classList.add('hover:text-[#d4af37]', 'hover:bg-[#d4af37]/5');
                     if(btn.classList.contains('nav-sub-btn')) btn.classList.add('text-[#1f271b]/70');
@@ -174,6 +192,7 @@
                 
                 const activeBtn = document.getElementById(`nav-${tabName}`);
                 if (activeBtn) {
+                    activeBtn.setAttribute('aria-current', 'page');
                     activeBtn.classList.add('text-[#d4af37]', 'bg-[#d4af37]/5');
                     activeBtn.classList.remove('text-[#1f271b]/70', 'hover:text-[#d4af37]', 'hover:bg-[#d4af37]/5');
                 }

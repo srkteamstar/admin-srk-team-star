@@ -106,10 +106,9 @@ account being created. Neither has a caller here, and an exported guard with no
 caller is a door waiting for somebody to decide it implies a route.
 
 **`core/http/storefront-link.js` is the only file that did not exist before.**
-It reads `STOREFRONT_URL` once at boot and does three things with it: serves
-`GET /storefront` as a redirect (which is what the dashboard's logo links),
-adds the origin to the CORS allow list, and names it in `connect-src`. An unset
-variable narrows all three rather than widening them.
+It reads `STOREFRONT_URL` once at boot and serves `GET /storefront` as a redirect
+(which is what the dashboard's logo links). It grants no CORS or `connect-src`
+access: the console's API and browser connections remain same-origin.
 
 ---
 

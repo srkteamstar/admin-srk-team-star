@@ -8,11 +8,10 @@
  * single thing about enquiries, carts or orders. Every module imports them;
  * they import no module.
  *
- * modules/auth OPENS a session (it owns the two doors and what they demand).
+ * modules/auth OPENS a session (it owns the admin door and what it demands).
  * This file READS one. The split matters: a route that can create a session is
- * a route that can grant access, and there are exactly two of those, both in
- * one module, both rate limited. Everything else in the application only ever
- * arrives here.
+ * a route that can grant access, and there is exactly one in this process. It
+ * is rate limited; everything else only ever reads the session here.
  *
  * The comment below is the original and is worth keeping whole — it is the
  * record of why the two roles have two doors.
@@ -36,8 +35,8 @@ const { supabase } = require('../database/supabase');
 //
 // So the doors are separate now:
 //
-//   POST /api/auth/login    storefront. Customer identifier only.
-//   POST /api/admin/login   dashboard. Identifier only, admin role only.
+//   POST /api/auth/login    storefront process. Customer password + role.
+//   POST /api/admin/login   this process. Administrator password + role.
 //
 // and the session records WHICH door it came through, in `req.session.scope`.
 // The role in the database says what someone may be; the scope says what
@@ -98,7 +97,7 @@ async function sessionProfile(req) {
 // Set by an administrator through PATCH /api/customers/:id/status. Checked
 // on every request that reads a session rather than only at sign-in, so
 // blocking somebody who is already signed in takes effect on their next
-// click instead of whenever their 30-day cookie happens to expire — the same
+// click instead of whenever their eight-hour cookie happens to expire — the same
 // reasoning requireAdmin gives for reading the role fresh every time.
 const isBlocked = (profile) => !!profile && profile.is_blocked === true;
 

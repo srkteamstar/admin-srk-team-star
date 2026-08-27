@@ -39,6 +39,9 @@ const sessionMiddleware = session({
     name: 'srk_admin_sid',
     resave: false,
     saveUninitialized: false,
+    // Refresh an active operator's expiry, but do not leave a privileged cookie
+    // valid for weeks after the dashboard was last used.
+    rolling: true,
     cookie: {
         httpOnly: true,
         sameSite: 'lax',
@@ -49,9 +52,9 @@ const sessionMiddleware = session({
         // of an environment variable: secure over TLS, and still usable on a
         // plain-HTTP dev server, with no flag to forget in either direction.
         secure: 'auto',
-        // 30 days. Credentials are checked when the session is opened; role
-        // and suspension are still re-read on every protected request.
-        maxAge: 30 * 24 * 60 * 60 * 1000
+        // Eight hours of inactivity. Credentials are checked when the session
+        // opens; role and suspension are still re-read on every request.
+        maxAge: 8 * 60 * 60 * 1000
     }
 });
 

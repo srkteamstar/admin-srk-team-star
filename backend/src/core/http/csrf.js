@@ -2,8 +2,6 @@
  * core/http/csrf.js — the Origin check SameSite is not
  * ============================================================================
  */
-const { ALLOWED_ORIGINS } = require('./cors');
-
 // ==========================================
 // CSRF — the Origin check SameSite is not
 // ==========================================
@@ -23,17 +21,24 @@ const STATE_CHANGING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 function csrfOriginGuard(req, res, next) {
     if (!STATE_CHANGING.has(req.method)) return next();
 
+    // Modern browsers state the relationship even when an Origin header is
+    // absent. Same-site is still a different origin and is not trusted here:
+    // an XSS on the public storefront must not become an admin API client.
+    const fetchSite = req.get('sec-fetch-site');
+    if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+        return res.status(403).json({ error: "Cross-origin request refused." });
+    }
+
     const origin = req.get('origin');
     if (!origin) return next();
-
-    if (ALLOWED_ORIGINS.includes(origin)) return next();
 
     // Same-origin: compared against the Host the request actually arrived on,
     // so this needs no configuration and cannot drift from where the site is
     // really being served.
     try {
         const host = req.get('host');
-        if (host && new URL(origin).host === host) return next();
+        const expected = host ? `${req.protocol}://${host}` : '';
+        if (expected && new URL(origin).origin === expected) return next();
     } catch (error) {
         // A malformed Origin is not something a browser produces.
     }

@@ -5,6 +5,18 @@ window.currentProjectImageFile = null;
 window.projectImageRemoved = false;
 window.upcomingSectionVisible = true;
 
+// Project copy is stored data and is rendered through innerHTML below. Escape
+// it at every HTML/attribute boundary so a malformed or hand-edited database
+// row cannot become script in an administrator's session.
+window.escapeProjectText = function(value) {
+    return (value ?? '').toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 // Initialization Fetch with Strict Cache Bypassing
 window.fetchUpcomingProjects = async function() {
     try {
@@ -50,40 +62,48 @@ window.paintUpcomingProjects = function() {
     // the website at all, so the table below should not read as live or be
     // editable — it goes monochrome and stops accepting input entirely.
     const sectionHidden = window.upcomingSectionVisible === false;
+    const ui = window.adminDashboardUI;
+    const visibleProjects = window.projectData.filter(project => project.is_visible !== false).length;
 
     let rows = window.projectData.length === 0
         ? `<tr><td colspan="7" class="py-8 text-center text-[#1f271b]/40 font-semibold">No projects found. Create one to get started.</td></tr>`
-        : window.projectData.map(p => `
-        <tr id="row-${p.id}" class="transition-all duration-300 ease-out hover:bg-gray-50 group ${p.is_visible === false ? 'opacity-50' : ''}">
-            <td class="py-4 px-5 text-[#1f271b]/70 font-mono text-xs">${p.id}</td>
-            <td class="py-4 px-5 text-[#1f271b]/70">${p.project_category_title || '-'}</td>
-            <td class="py-4 px-5 text-[#1f271b] font-bold cursor-pointer hover:text-[#d4af37]" onclick="window.handleProjectAction('${p.id}')">${p.project_name || '-'}</td>
-            <td class="py-4 px-5 text-[#1f271b]/60 truncate max-w-[200px] cursor-pointer" onclick="window.handleProjectAction('${p.id}')">${p.project_description || '-'}</td>
-            <td class="py-4 px-5 font-bold text-xs">${p.due_date || '-'}</td>
+        : window.projectData.map(p => {
+            const id = window.escapeProjectText(p.id);
+            const category = window.escapeProjectText(p.project_category_title || '-');
+            const name = window.escapeProjectText(p.project_name || '-');
+            const description = window.escapeProjectText(p.project_description || '-');
+            const dueDate = window.escapeProjectText(p.due_date || '-');
+            return `
+        <tr id="row-${id}" class="transition-all duration-300 ease-out hover:bg-gray-50 group ${p.is_visible === false ? 'opacity-50' : ''}">
+            <td class="py-4 px-5 text-[#1f271b]/70 font-mono text-xs">${id}</td>
+            <td class="py-4 px-5 text-[#1f271b]/70">${category}</td>
+            <td class="py-4 px-5 text-[#1f271b] font-bold cursor-pointer hover:text-[#d4af37]" onclick="window.handleProjectAction('${id}')">${name}</td>
+            <td class="py-4 px-5 text-[#1f271b]/60 truncate max-w-[200px] cursor-pointer" onclick="window.handleProjectAction('${id}')">${description}</td>
+            <td class="py-4 px-5 font-bold text-xs">${dueDate}</td>
             <td class="py-4 px-5 w-[150px] min-w-[150px]">
-                ${window.renderToggle(`toggle-project-${p.id}`, p.is_visible !== false, `window.toggleProjectVisibility('${p.id}')`, p.is_visible === false ? 'Hidden' : 'Live')}
+                ${window.renderToggle(`toggle-project-${id}`, p.is_visible !== false, `window.toggleProjectVisibility('${id}')`, p.is_visible === false ? 'Hidden' : 'Live')}
             </td>
             <td class="py-4 px-5 text-right relative">
-                <button onclick="window.toggleDropdown(event, '${p.id}')" class="text-[#1f271b]/40 hover:text-[#d4af37] focus:outline-none transition-colors p-1 rounded hover:bg-gray-200">
+                <button onclick="window.toggleDropdown(event, '${id}')" class="text-[#1f271b]/40 hover:text-[#d4af37] focus:outline-none transition-colors p-1 rounded hover:bg-gray-200">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
                 </button>
-                <div id="dropdown-${p.id}" class="hidden absolute right-5 top-10 bg-white border border-[#12170f]/10 shadow-lg rounded-sm w-36 z-20 text-left overflow-hidden">
-                    <button onclick="window.handleProjectAction('${p.id}')" class="block w-full text-left px-4 py-2.5 text-sm text-[#1f271b] font-semibold hover:bg-gray-50 transition-colors">Edit Project</button>
-                    <button onclick="window.deleteProject('${p.id}')" class="block w-full text-left px-4 py-2.5 text-sm text-red-600 font-semibold hover:bg-red-50 transition-colors border-t border-gray-100">Delete Project</button>
+                <div id="dropdown-${id}" class="hidden absolute right-5 top-10 bg-white border border-[#12170f]/10 shadow-lg rounded-sm w-36 z-20 text-left overflow-hidden">
+                    <button onclick="window.handleProjectAction('${id}')" class="block w-full text-left px-4 py-2.5 text-sm text-[#1f271b] font-semibold hover:bg-gray-50 transition-colors">Edit Project</button>
+                    <button onclick="window.deleteProject('${id}')" class="block w-full text-left px-4 py-2.5 text-sm text-red-600 font-semibold hover:bg-red-50 transition-colors border-t border-gray-100">Delete Project</button>
                 </div>
             </td>
         </tr>
-    `).join('');
+    `; }).join('');
 
     container.innerHTML = `
-        <div class="flex justify-between items-start mb-6">
-            <div><h2 class="text-3xl font-bold tracking-tight text-[#12170f]">Upcoming Projects</h2><p class="text-sm text-[#1f271b]/60 mt-2">Manage operational workflows and deliveries.</p></div>
-            <button onclick="window.handleProjectAction('new')" class="bg-[#420c14] text-white px-5 py-2.5 rounded-sm text-sm font-bold hover:bg-[#5e1220] transition-colors focus-visible:outline-none flex items-center gap-2 shadow-sm">
-                <svg class="w-4 h-4" stroke="#ffffff" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg> Add Project
-            </button>
+        <div class="max-w-7xl mx-auto pb-10">
+        ${ui.hero('Operations planning', 'Upcoming Projects', 'Plan visible initiatives and control exactly what appears on the storefront.', ui.primaryAction('Add project', "window.handleProjectAction('new')"))}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 max-w-3xl">
+            ${ui.stat('Total projects', window.projectData.length, 'All planned initiatives', 'gold', 'calendar')}
+            ${ui.stat('Visible projects', visibleProjects, sectionHidden ? 'The entire section is currently hidden' : 'Currently published to the storefront', sectionHidden ? 'wine' : 'green', sectionHidden ? 'hidden' : 'check')}
         </div>
 
-        <div class="flex items-center justify-between bg-white border border-[#12170f]/10 rounded-sm px-5 py-4 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-[#12170f]/10 rounded-xl px-5 py-5 mb-6 shadow-[0_8px_30px_rgba(18,23,15,0.04)]">
             <div>
                 <p class="text-sm font-bold text-[#12170f]">Show section on website</p>
                 <p class="text-xs text-[#1f271b]/60 mt-1">Turn off to hide the entire Upcoming Projects section from the homepage. Projects stay saved.</p>
@@ -99,7 +119,11 @@ window.paintUpcomingProjects = function() {
         <!-- pointer-events-none stops the mouse; inert also takes the rows, toggles
              and dropdowns out of the tab order, which pointer-events alone leaves
              reachable by keyboard. -->
-        <div class="bg-white border border-[#12170f]/10 rounded-sm overflow-visible mb-6 transition-all duration-300 ${sectionHidden ? 'grayscale opacity-60 pointer-events-none select-none' : ''}" ${sectionHidden ? 'inert' : ''}>
+        <section class="bg-white border border-[#12170f]/10 rounded-xl overflow-visible mb-6 shadow-[0_10px_35px_rgba(18,23,15,0.04)] transition-all duration-300 ${sectionHidden ? 'grayscale opacity-60 pointer-events-none select-none' : ''}" ${sectionHidden ? 'inert' : ''}>
+            <div class="px-5 py-5 border-b border-[#12170f]/10">
+                <p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Storefront roadmap</p>
+                <h3 class="text-xl text-[#12170f] mt-1">Project list</h3>
+            </div>
             <table class="w-full text-left border-collapse">
                 <thead><tr class="bg-[#f8fafc] border-b border-[#12170f]/10 text-xs text-[#12170f]/40 uppercase tracking-wide font-bold">
                     <th class="py-4 px-5">PROJECT ID</th>
@@ -114,6 +138,7 @@ window.paintUpcomingProjects = function() {
                     ${rows}
                 </tbody>
             </table>
+        </section>
         </div>
     `;
 };
@@ -334,6 +359,11 @@ window.handleProjectAction = function(id) {
         : window.projectData.find(x => x.id == id);
     
     const imageUrlToLoad = (p.image_url && id !== 'new') ? `${p.image_url}?t=${new Date().getTime()}` : '';
+    const safeProjectId = window.escapeProjectText(p.id);
+    const safeCategory = window.escapeProjectText(p.project_category_title || '');
+    const safeName = window.escapeProjectText(p.project_name || '');
+    const safeDescription = window.escapeProjectText(p.project_description || '');
+    const safeDueDate = window.escapeProjectText(p.due_date || '');
     
     app.openDrawer(`
         <div class="flex flex-col h-full relative bg-white">
@@ -367,30 +397,30 @@ window.handleProjectAction = function(id) {
 
                 <div>
                     <label class="block text-xs font-bold text-[#1f271b]/80 mb-2 uppercase tracking-wide">CATEGORY <span class="text-red-500">*</span></label>
-                    <input autocomplete="srk-no-autofill" spellcheck="false" id="input-category" type="text" required value="${p.project_category_title || ''}" placeholder="Enter category title" class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
+                    <input autocomplete="srk-no-autofill" spellcheck="false" id="input-category" type="text" required value="${safeCategory}" placeholder="Enter category title" class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-[#1f271b]/80 mb-2 uppercase tracking-wide">NAME <span class="text-red-500">*</span></label>
-                    <input autocomplete="srk-no-autofill" spellcheck="false" id="input-name" type="text" required value="${p.project_name || ''}" placeholder="Enter project name" class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
+                    <input autocomplete="srk-no-autofill" spellcheck="false" id="input-name" type="text" required value="${safeName}" placeholder="Enter project name" class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-[#1f271b]/80 mb-2 uppercase tracking-wide">DESCRIPTION <span class="text-red-500">*</span></label>
-                    <textarea autocomplete="srk-no-autofill" spellcheck="false" id="input-desc" rows="4" required placeholder="Detailed project overview..." class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37] resize-y max-h-[200px]">${p.project_description || ''}</textarea>
+                    <textarea autocomplete="srk-no-autofill" spellcheck="false" id="input-desc" rows="4" required placeholder="Detailed project overview..." class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37] resize-y max-h-[200px]">${safeDescription}</textarea>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-[#1f271b]/80 mb-2 uppercase tracking-wide">DUE DATE <span class="text-red-500">*</span></label>
-                    <input autocomplete="srk-no-autofill" spellcheck="false" id="input-date" type="text" required value="${p.due_date || ''}" placeholder="DD MMM YYYY" class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
+                    <input autocomplete="srk-no-autofill" spellcheck="false" id="input-date" type="text" required value="${safeDueDate}" placeholder="DD MMM YYYY" class="w-full bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
                 </div>
             </div>
 
             <!-- FIXED: Added sticky solid background block to fully mask fields scrolling behind it -->
             <div class="sticky bottom-0 w-full bg-white border-t border-gray-200 py-4 mt-8 z-50">
                 <div class="flex gap-3">
-                    <button id="save-project-btn" onclick="window.saveProjectData('${p.id}')" class="flex-1 bg-[#420c14] text-white py-3 rounded-sm font-bold text-sm hover:bg-[#5e1220] transition-colors">Save Project</button>
+                    <button id="save-project-btn" onclick="window.saveProjectData('${safeProjectId}')" class="flex-1 bg-[#420c14] text-white py-3 rounded-sm font-bold text-sm hover:bg-[#5e1220] transition-colors">Save Project</button>
                     <button onclick="app.closeDrawer()" class="flex-1 bg-white border border-[#12170f]/10 text-[#12170f] py-3 rounded-sm font-bold text-sm hover:bg-gray-50 transition-colors">Cancel</button>
                     
                     ${id !== 'new' ? `
-                    <button onclick="window.deleteProject('${p.id}')" title="Delete Project" class="flex items-center justify-center bg-white border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 px-4 py-3 rounded-sm transition-colors group">
+                    <button onclick="window.deleteProject('${safeProjectId}')" title="Delete Project" class="flex items-center justify-center bg-white border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 px-4 py-3 rounded-sm transition-colors group">
                         <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
                     ` : ''}
@@ -398,7 +428,7 @@ window.handleProjectAction = function(id) {
             </div>
 
         </div>
-    `, id === 'new' ? 'NEW PROJECT' : 'EDIT PROJECT', id === 'new' ? '' : `<div class="bg-white border border-[#12170f]/10 text-[#d4af37] px-3 py-1.5 rounded-sm text-sm font-bold tracking-wide">${p.id}</div>`);
+    `, id === 'new' ? 'NEW PROJECT' : 'EDIT PROJECT', id === 'new' ? '' : `<div class="bg-white border border-[#12170f]/10 text-[#d4af37] px-3 py-1.5 rounded-sm text-sm font-bold tracking-wide">${safeProjectId}</div>`);
     
     // FIXED: Bulletproof Javascript Image Verification. 
     // This bypasses innerHTML event injection failures by directly probing the URL.

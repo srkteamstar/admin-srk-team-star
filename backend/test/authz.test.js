@@ -57,6 +57,18 @@ async function req(cookies, method, path, body, extraHeaders) {
     return { status: res.status, body: payload };
 }
 
+async function reqForm(cookies, path, form) {
+    const headers = {};
+    const cookieHeader = cookies ? cookies.header() : '';
+    if (cookieHeader) headers.Cookie = cookieHeader;
+    const res = await fetch(BASE + path, { method: 'POST', headers, body: form, redirect: 'manual' });
+    if (cookies) cookies.absorb(res);
+    let payload = null;
+    const body = await res.text();
+    try { payload = JSON.parse(body); } catch { payload = body; }
+    return { status: res.status, body: payload };
+}
+
 (async () => {
     const anon = jar(), admin = jar(), admin2 = jar();
 
@@ -157,6 +169,14 @@ async function req(cookies, method, path, body, extraHeaders) {
     }
     r = await req(admin, 'PATCH', '/api/orders/900/status', { status: 'Shipped', tracking: 'TRK-A' });
     check('admin can update an order status', r.status === 200, JSON.stringify(r).slice(0, 90));
+
+    const disguisedImage = new FormData();
+    disguisedImage.append('id', 'new');
+    disguisedImage.append('project_name', 'Fake project');
+    disguisedImage.append('image', new Blob(['not a real image'], { type: 'image/webp' }), 'fake.webp');
+    r = await reqForm(admin, '/api/projects', disguisedImage);
+    check('an upload with a forged image MIME type is refused',
+        r.status === 400 && /not a valid/i.test(String(r.body && r.body.error)), JSON.stringify(r));
 
     console.log('\n=== 6. STATUS VOCABULARIES ARE ENFORCED ===');
     r = await req(admin, 'PATCH', '/api/enquiries/500/status', { status: '<script>x</script>' });
@@ -262,6 +282,12 @@ async function req(cookies, method, path, body, extraHeaders) {
         { identifier: 'admin@example.test', password: 'Correct Horse Battery Staple' },
         { Origin: 'https://evil.example' });
     check('cross-origin state change is refused', r.status === 403, r.status + ' ' + JSON.stringify(r.body).slice(0, 60));
+
+    r = await req(anon, 'POST', '/api/admin/login',
+        { identifier: 'admin@example.test', password: 'Correct Horse Battery Staple' },
+        { 'Sec-Fetch-Site': 'same-site' });
+    check('same-site but cross-origin browser requests are refused even without Origin',
+        r.status === 403, r.status + ' ' + JSON.stringify(r.body).slice(0, 60));
 
     console.log('\n' + '='.repeat(64));
     console.log(`RESULT: ${pass} passed, ${fail} failed`);

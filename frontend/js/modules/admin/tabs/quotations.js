@@ -268,17 +268,12 @@ window.renderQuotationsView = function() {
     const progress = data.filter(q => q.status === 'In Progress').length;
     const resolved = data.filter(q => q.status === 'Resolved').length;
 
+    const ui = window.adminDashboardUI;
     const statsHtml = `
-        <div class="grid grid-cols-3 gap-4 mb-8">
-            <div class="bg-white border-b-2 border-b-yellow-500 p-5 shadow-sm">
-                <h3 id="stat-quote-open" class="text-2xl font-bold transition-all duration-300">${open}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Open Quotes</p>
-            </div>
-            <div class="bg-white border-b-2 border-b-blue-500 p-5 shadow-sm">
-                <h3 id="stat-quote-progress" class="text-2xl font-bold transition-all duration-300">${progress}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">In Progress</p>
-            </div>
-            <div class="bg-white border-b-2 border-b-green-500 p-5 shadow-sm">
-                <h3 id="stat-quote-resolved" class="text-2xl font-bold transition-all duration-300">${resolved}</h3><p class="text-[10px] text-[#1f271b]/60 uppercase font-bold tracking-wider mt-1">Resolved</p>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            ${ui.stat('Open quotes', open, 'Awaiting review', 'gold', 'quote', 'stat-quote-open')}
+            ${ui.stat('In progress', progress, 'Actively being prepared', 'blue', 'clock', 'stat-quote-progress')}
+            ${ui.stat('Resolved', resolved, 'Completed quote requests', 'green', 'check', 'stat-quote-resolved')}
         </div>`;
 
     // Widths sum to 100 and the table is table-fixed, same as Technical Support.
@@ -338,11 +333,14 @@ window.renderQuotationsView = function() {
         }).join('');
 
     container.innerHTML = `
-        <div class="mb-10">
-            <h2 class="text-3xl font-bold tracking-tight text-[#12170f]">Quotations</h2>
-        </div>
+        <div class="max-w-7xl mx-auto pb-10">
+        ${ui.hero('Sales enquiries', 'Quotations', 'Turn product requests into clear, trackable commercial conversations.')}
         ${statsHtml}
-        <div class="bg-white border border-[#12170f]/10 rounded-sm mb-6 shadow-sm overflow-hidden flex flex-col relative">
+        <section class="bg-white border border-[#12170f]/10 rounded-xl mb-6 shadow-[0_10px_35px_rgba(18,23,15,0.04)] overflow-hidden flex flex-col relative">
+            <div class="px-5 py-5 border-b border-[#12170f]/10">
+                <p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Commercial pipeline</p>
+                <h3 class="text-xl text-[#12170f] mt-1">Quote requests</h3>
+            </div>
             <!-- The table gets a fixed viewport rather than sizing to its rows.
                  min-h holds a consistent height so one quote and twenty do not
                  produce two differently shaped pages, and so the box never
@@ -364,6 +362,7 @@ window.renderQuotationsView = function() {
                     <tbody id="quotations-tbody" class="text-sm font-semibold divide-y divide-[#12170f]/5">${rows}</tbody>
                 </table>
             </div>
+        </section>
         </div>
     `;
 };

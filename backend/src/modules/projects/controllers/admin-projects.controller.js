@@ -13,7 +13,7 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
-const { upload } = require('../../../core/uploads/image-upload');
+const { upload, hasValidImageSignature } = require('../../../core/uploads/image-upload');
 const { SECTION_VISIBILITY_KEY, isSectionVisible } = require('../services/project-visibility.service');
 
 /** @returns {import('express').Router} */
@@ -105,6 +105,10 @@ function adminProjectsController() {
         });
     }, async (req, res) => {
         const { id, project_category_title, project_name, project_description, due_date, remove_image } = req.body;
+
+        if (req.file && !hasValidImageSignature(req.file)) {
+            return res.status(400).json({ error: "The uploaded file is not a valid AVIF or WebP image." });
+        }
 
         try {
             let projectId = id;

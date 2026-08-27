@@ -47,3 +47,54 @@ test('the logo links the storefront through the redirect route', async ({ page }
     const response = await page.request.get('/storefront', { maxRedirects: 0 });
     expect([302, 503]).toContain(response.status());
 });
+
+test('dashboard is operational, revenue is shipped-only, and order actions open on click', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#admin-identifier').fill('admin@example.test');
+    await page.locator('#admin-password').fill('Correct Horse Battery Staple');
+    await page.locator('#admin-signin-submit').click();
+
+    await expect(page.getByRole('heading', { name: 'Your store, at a glance.' })).toBeVisible();
+    await expect(page.getByText('What needs attention')).toBeVisible();
+    await expect(page.getByText('Recent orders')).toBeVisible();
+
+    await page.locator('#nav-orders').click();
+    await expect(page.locator('#stat-order-revenue')).toHaveText('₹ 2,360');
+
+    const actionButton = page.locator('#order-actions-button-901');
+    const actionMenu = page.locator('#order-actions-menu-901');
+    await actionButton.hover();
+    await expect(actionMenu).toBeHidden();
+    await actionButton.click();
+    await expect(actionMenu).toBeVisible();
+    await expect(actionButton).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(actionMenu).toBeHidden();
+    await expect(actionButton).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('stored project copy is rendered as text rather than executable markup', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#admin-identifier').fill('admin@example.test');
+    await page.locator('#admin-password').fill('Correct Horse Battery Staple');
+    await page.locator('#admin-signin-submit').click();
+    await expect(page.getByRole('heading', { name: 'Your store, at a glance.' })).toBeVisible();
+
+    await page.evaluate(() => {
+        window.app.currentTab = 'upcoming-projects';
+        window.projectData = [{
+            id: 77,
+            project_category_title: '<img id="stored-xss-category">',
+            project_name: '<img id="stored-xss-name">',
+            project_description: '<script id="stored-xss-script">window.__storedXss = true</script>',
+            due_date: 'Soon',
+            is_visible: true
+        }];
+        window.upcomingSectionVisible = true;
+        window.paintUpcomingProjects();
+    });
+
+    await expect(page.locator('#stored-xss-category, #stored-xss-name, #stored-xss-script')).toHaveCount(0);
+    await expect(page.getByText('<img id="stored-xss-name">')).toBeVisible();
+    expect(await page.evaluate(() => window.__storedXss)).toBeUndefined();
+});

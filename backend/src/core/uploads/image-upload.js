@@ -24,4 +24,30 @@ const upload = multer({
     }
 });
 
-module.exports = { upload };
+function hasBrand(buffer, brand) {
+    for (let offset = 8; offset + 4 <= Math.min(buffer.length, 64); offset += 4) {
+        if (buffer.toString('ascii', offset, offset + 4) === brand) return true;
+    }
+    return false;
+}
+
+function hasValidImageSignature(file) {
+    if (!file || !Buffer.isBuffer(file.buffer)) return false;
+    const buffer = file.buffer;
+
+    if (file.mimetype === 'image/webp') {
+        return buffer.length >= 12
+            && buffer.toString('ascii', 0, 4) === 'RIFF'
+            && buffer.toString('ascii', 8, 12) === 'WEBP';
+    }
+
+    if (file.mimetype === 'image/avif') {
+        return buffer.length >= 12
+            && buffer.toString('ascii', 4, 8) === 'ftyp'
+            && (hasBrand(buffer, 'avif') || hasBrand(buffer, 'avis'));
+    }
+
+    return false;
+}
+
+module.exports = { upload, hasValidImageSignature };
