@@ -113,10 +113,8 @@ smuggled into a structural one.
    Not done.
 2. **`core/` and `shared/` are copies and will drift.** A bug fixed in one
    repository is worth grepping for in the other.
-3. **MemoryStore for sessions.** A restart signs every administrator out. Fine
-   for one process; wrong the moment there are two.
-4. **The inline handlers.** Removing `'unsafe-inline'` from `script-src` means
+3. **The inline handlers.** Removing `'unsafe-inline'` from `script-src` means
    extracting every `onclick=` first.
-5. **No network restriction is enforced by this application.** Password auth
+4. **No network restriction is enforced by this application.** Password auth
    now protects the door, but a private deployment perimeter remains worthwhile
    defence in depth for a console with destructive routes.

@@ -7,6 +7,8 @@
  * may set it.
  */
 const session = require('express-session');
+const { supabase } = require('../database/supabase');
+const { SupabaseSessionStore } = require('./supabase-session-store');
 
 // ADMIN SESSION
 //
@@ -14,10 +16,9 @@ const session = require('express-session');
 // publicly-served JS file, forever — anyone who loaded the site could read it
 // from view-source. A session cookie is scoped to a login the admin actually
 // performs, is httpOnly (invisible to any JS, first-party or injected), and
-// expires. MemoryStore is the express-session default and is fine for this —
-// a single admin, one process — and is the reason a server restart signs
-// everyone out, which is an acceptable trade for not standing up a session
-// table for one user.
+// expires. The record behind that cookie lives in Supabase rather than this
+// process: serverless requests may land on different Vercel instances, and an
+// in-memory record would make a successful login disappear on the next click.
 // A session secret is what makes the signed cookie unforgeable. Refusing to
 // start is the only safe answer to its absence: the alternative is a process
 // that looks healthy while issuing sessions anybody can mint.
@@ -36,6 +37,7 @@ if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
 
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
+    store: new SupabaseSessionStore(supabase),
     // srk_admin_sid, and the name is honest again. In the combined
     // repository this cookie carried storefront shoppers as well, so it was
     // renamed to srk_sid; here it is only ever an administrator. Distinct from

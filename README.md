@@ -55,7 +55,10 @@ administrator role; changing that role remains a hand edit to
 
 Before the first password is set, run the storefront's additive migration
 `../#2/backend/migrations/028_restore_customer_passwords.sql` against the shared
-Supabase project. Then set or replace one administrator's credential from an
+Supabase project. Also run
+`backend/migrations/001_create_admin_sessions.sql`; the shared session
+table is required on serverless deployments so navigation does not lose the
+login when the next request reaches another instance. Then set or replace one administrator's credential from an
 interactive terminal:
 
 ```bash

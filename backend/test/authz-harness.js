@@ -23,6 +23,10 @@ const control = require('./harness-control');
 // matching administrator password hash is also required before a session opens.
 
 const db = {
+    // Server-side administrator sessions. Keeping this in the shared fake
+    // database exercises the same persistence boundary as separate Vercel
+    // function instances rather than silently falling back to MemoryStore.
+    admin_sessions: [],
     roles: [
         { id: 1, role_name: 'admin' },
         { id: 2, role_name: 'customer' }
