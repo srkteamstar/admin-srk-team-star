@@ -21,9 +21,17 @@ const session = require('express-session');
 // A session secret is what makes the signed cookie unforgeable. Refusing to
 // start is the only safe answer to its absence: the alternative is a process
 // that looks healthy while issuing sessions anybody can mint.
+//
+// A thrown Error, not process.exit(). On a long-running server the effect is
+// the same either way — the process never comes up. On Vercel, this module is
+// required inside a serverless function invocation, not a process being
+// started: process.exit() there kills the whole Lambda sandbox mid-request,
+// which Vercel reports as a bare "Serverless Function has crashed" with no
+// application log at all. Throwing instead is caught by the platform's own
+// invocation wrapper, still refuses to serve a single request, and actually
+// prints this message — with a stack trace — to the function's logs.
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
-    console.error('FATAL: SESSION_SECRET is missing or shorter than 32 characters. Refusing to start.');
-    process.exit(1);
+    throw new Error('FATAL: SESSION_SECRET is missing or shorter than 32 characters. Refusing to start.');
 }
 
 const sessionMiddleware = session({
