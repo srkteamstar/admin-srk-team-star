@@ -1,0 +1,58 @@
+/*
+ * core/http/session.js — one cookie, two scopes
+ * ============================================================================
+ *
+ * The `scope` a session carries (`'admin'` or absent, meaning customer) is
+ * written by modules/auth and read by core/security/guards.js. Nothing else
+ * may set it.
+ */
+const session = require('express-session');
+
+// ADMIN SESSION
+//
+// The admin dashboard used to ship its password in cleartext, inside a
+// publicly-served JS file, forever — anyone who loaded the site could read it
+// from view-source. A session cookie is scoped to a login the admin actually
+// performs, is httpOnly (invisible to any JS, first-party or injected), and
+// expires. MemoryStore is the express-session default and is fine for this —
+// a single admin, one process — and is the reason a server restart signs
+// everyone out, which is an acceptable trade for not standing up a session
+// table for one user.
+// A session secret is what makes the signed cookie unforgeable. Refusing to
+// start is the only safe answer to its absence: the alternative is a process
+// that looks healthy while issuing sessions anybody can mint.
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+    console.error('FATAL: SESSION_SECRET is missing or shorter than 32 characters. Refusing to start.');
+    process.exit(1);
+}
+
+const sessionMiddleware = session({
+    secret: process.env.SESSION_SECRET,
+    // srk_admin_sid, and the name is honest again. In the combined
+    // repository this cookie carried storefront shoppers as well, so it was
+    // renamed to srk_sid; here it is only ever an administrator. Distinct from
+    // the storefront's name on purpose: the two applications are separate
+    // origins and so already have separate cookie jars, but if they are ever
+    // put behind one hostname on different paths, two names is the difference
+    // between "signing into one signs you out of the other" and a silent
+    // collision.
+    name: 'srk_admin_sid',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        sameSite: 'lax',
+        // 'auto' rather than a NODE_ENV test. The old form meant a
+        // deployment that simply forgot to set NODE_ENV=production shipped
+        // the session cookie over plain HTTP, and nothing about the site
+        // would look wrong while it did. 'auto' asks the connection instead
+        // of an environment variable: secure over TLS, and still usable on a
+        // plain-HTTP dev server, with no flag to forget in either direction.
+        secure: 'auto',
+        // 30 days. Credentials are checked when the session is opened; role
+        // and suspension are still re-read on every protected request.
+        maxAge: 30 * 24 * 60 * 60 * 1000
+    }
+});
+
+module.exports = { sessionMiddleware };

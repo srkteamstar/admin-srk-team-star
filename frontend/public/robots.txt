@@ -1,0 +1,15 @@
+# THIS ENTIRE ORIGIN IS AN ADMINISTRATOR'S CONSOLE.
+#
+# There is no page here a search engine should hold, so the disallow is the
+# whole site rather than a list of paths that would need an entry the day
+# somebody adds a second page. Nothing here is protected BY this file — every
+# route is enforced server-side and the dashboard's gate does not care what a
+# crawler was told. This only keeps the console out of search results, which a
+# well-behaved crawler honours and a badly-behaved one was never going to.
+#
+# The X-Robots-Tag: noindex header, set unconditionally in
+# backend/src/core/http/private-paths.js, is the half a crawler cannot ignore
+# by fetching the page anyway.
+
+User-agent: *
+Disallow: /
