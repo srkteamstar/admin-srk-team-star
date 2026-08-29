@@ -10,6 +10,10 @@ const session = require('express-session');
 const { supabase } = require('../database/supabase');
 const { SupabaseSessionStore } = require('./supabase-session-store');
 
+const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const ADMIN_ABSOLUTE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+const ADMIN_ROTATION_INTERVAL_MS = 15 * 60 * 1000;
+
 // ADMIN SESSION
 //
 // The admin dashboard used to ship its password in cleartext, inside a
@@ -35,7 +39,7 @@ if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
     throw new Error('FATAL: SESSION_SECRET is missing or shorter than 32 characters. Refusing to start.');
 }
 
-const sessionMiddleware = session({
+const expressSessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
     store: new SupabaseSessionStore(supabase),
     // srk_admin_sid, and the name is honest again. In the combined
@@ -62,10 +66,48 @@ const sessionMiddleware = session({
         // of an environment variable: secure over TLS, and still usable on a
         // plain-HTTP dev server, with no flag to forget in either direction.
         secure: 'auto',
-        // Eight hours of inactivity. Credentials are checked when the session
-        // opens; role and suspension are still re-read on every request.
-        maxAge: 8 * 60 * 60 * 1000
+        // Short idle lifetime; the wrapper below also enforces an absolute
+        // eight-hour lifetime that rolling activity cannot extend.
+        maxAge: ADMIN_IDLE_TIMEOUT_MS
     }
 });
 
-module.exports = { sessionMiddleware };
+function sessionMiddleware(req, res, next) {
+    expressSessionMiddleware(req, res, error => {
+        if (error) return next(error);
+        if (!req.session || req.session.scope !== 'admin') return next();
+
+        const authenticatedAt = Number(req.session.authenticatedAt);
+        const expired = !Number.isFinite(authenticatedAt)
+            || authenticatedAt <= 0
+            || Date.now() - authenticatedAt >= ADMIN_ABSOLUTE_TIMEOUT_MS;
+        if (!expired) {
+            const lastRotatedAt = Number(req.session.lastRotatedAt) || authenticatedAt;
+            if (Date.now() - lastRotatedAt < ADMIN_ROTATION_INTERVAL_MS) return next();
+
+            const retained = {
+                customerId: req.session.customerId,
+                scope: req.session.scope,
+                authenticatedAt,
+                credentialFingerprint: req.session.credentialFingerprint
+            };
+            return req.session.regenerate(regenerateError => {
+                if (regenerateError) return next(regenerateError);
+                Object.assign(req.session, retained, { lastRotatedAt: Date.now() });
+                req.session.save(next);
+            });
+        }
+
+        req.session.destroy(destroyError => {
+            res.clearCookie('srk_admin_sid');
+            next(destroyError || undefined);
+        });
+    });
+}
+
+module.exports = {
+    sessionMiddleware,
+    ADMIN_IDLE_TIMEOUT_MS,
+    ADMIN_ABSOLUTE_TIMEOUT_MS,
+    ADMIN_ROTATION_INTERVAL_MS
+};

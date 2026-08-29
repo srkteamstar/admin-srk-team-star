@@ -81,12 +81,14 @@ async function readinessHandler(req, res) {
 
         res.status(200).json({ status: 'ready', checks: { database: 'ok' } });
     } catch (error) {
-        // The message, not the stack, and nothing about credentials. 503 is
-        // the load balancer's signal; the body is for whoever reads the logs.
+        console.error('Readiness dependency failure', {
+            correlation_id: req.requestId,
+            error: error && error.message ? String(error.message).slice(0, 300) : 'unknown'
+        });
         res.status(503).json({
             status: 'not_ready',
             checks: { database: 'unreachable' },
-            detail: error && error.message ? String(error.message).slice(0, 200) : 'unknown'
+            correlation_id: req.requestId
         });
     } finally {
         clearTimeout(timer);

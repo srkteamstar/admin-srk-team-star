@@ -68,6 +68,20 @@ const consumeAtomicCheckoutFailure = () => {
     return true;
 };
 
+const failNextStorageOperation = operation => {
+    const state = read();
+    state.failNextStorageOperation = operation;
+    write(state);
+};
+
+const consumeStorageFailure = operation => {
+    const state = read();
+    if (state.failNextStorageOperation !== operation) return false;
+    delete state.failNextStorageOperation;
+    write(state);
+    return true;
+};
+
 const paidOrders = () => {
     const state = read();
     return Array.isArray(state.paidOrders) ? state.paidOrders : [];
@@ -75,4 +89,15 @@ const paidOrders = () => {
 
 const reset = () => write({});
 
-module.exports = { controlPath, read, write, setPaidOrders, paidOrders, failNextAtomicCheckout, consumeAtomicCheckoutFailure, reset };
+module.exports = {
+    controlPath,
+    read,
+    write,
+    setPaidOrders,
+    paidOrders,
+    failNextAtomicCheckout,
+    consumeAtomicCheckoutFailure,
+    failNextStorageOperation,
+    consumeStorageFailure,
+    reset
+};

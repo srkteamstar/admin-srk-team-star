@@ -17,6 +17,7 @@
 const { supabase } = require('../../../core/database/supabase');
 const { trimmed } = require('../../../shared/validation');
 const { normalizePhone, normalizeEmail, looksLikeEmail } = require('../domain/identifier');
+const { credentialFingerprint } = require('../../../core/security/session-credentials');
 
 async function resolveIdentifier(identifier) {
     const value = trimmed(identifier);
@@ -42,12 +43,15 @@ async function resolveIdentifier(identifier) {
 // route has to ask for an admin session explicitly — a new sign-in path that
 // forgets the argument creates a customer session, which is the failure that
 // costs nothing.
-function startSession(req, customerId, scope) {
+function startSession(req, customerId, scope, passwordHash) {
     return new Promise((resolve, reject) => {
         req.session.regenerate((err) => {
             if (err) return reject(err);
             req.session.customerId = customerId;
             req.session.scope = scope === 'admin' ? 'admin' : 'customer';
+            req.session.authenticatedAt = Date.now();
+            req.session.lastRotatedAt = Date.now();
+            if (scope === 'admin') req.session.credentialFingerprint = credentialFingerprint(passwordHash);
             req.session.save((saveErr) => (saveErr ? reject(saveErr) : resolve()));
         });
     });

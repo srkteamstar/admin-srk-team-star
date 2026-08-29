@@ -77,7 +77,7 @@ window.quotationData = [];
 // remember to — the same discipline enquiries.js applies to its own mapping.
 window.loadQuotations = async function() {
     try {
-        const response = await window.adminAuth.fetch('/api/quote-requests');
+        const response = await window.adminAuth.fetch('/api/quote-requests?limit=250');
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 

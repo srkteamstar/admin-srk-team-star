@@ -12,7 +12,7 @@ const server = spawn(process.execPath, [path.join(__dirname, 'authz-harness.js')
 
 // The suite runs against the one booted server. A failure fails the run —
 // `npm test` is a gate, not a report.
-const SUITES = ['authz.test.js', 'session-store.test.js'];
+const SUITES = ['authz.test.js', 'session-store.test.js', 'security-controls.test.js'];
 
 function runSuites(index, worstCode) {
     if (index >= SUITES.length) {

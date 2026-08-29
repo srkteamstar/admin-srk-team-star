@@ -17,14 +17,16 @@ const { supabase } = require('../../../core/database/supabase');
 
 // Fixed number of queries regardless of how many orders there are, then
 // grouped in JS — same shape as fetchProductRows()'s imagesByProduct Map.
-async function fetchOrderRows() {
-    const { data: orders, error: ordersError } = await supabase
+async function fetchOrderRows(pagination) {
+    let orderQuery = supabase
         .from('orders')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
+    if (pagination) orderQuery = orderQuery.range(pagination.from, pagination.to);
+    const { data: orders, count, error: ordersError } = await orderQuery;
 
     if (ordersError) throw ordersError;
-    if (!orders || orders.length === 0) return [];
+    if (!orders || orders.length === 0) return { rows: [], total: count || 0 };
 
     const orderIds = orders.map(o => o.id);
     const userIds = [...new Set(orders.map(o => o.user_id).filter(id => id !== null && id !== undefined))];
@@ -67,12 +69,21 @@ async function fetchOrderRows() {
         }
     });
 
-    return orders.map(order => {
+    const rows = orders.map(order => {
         const customer = order.user_id !== null && order.user_id !== undefined
             ? customerById.get(String(order.user_id)) || null
             : null;
         const shipping = shippingByOrder.get(String(order.id)) || null;
         const payment = paymentByOrder.get(String(order.id)) || null;
+
+        // The storefront retains a terminal failed-payment row for gateway
+        // reconciliation, because a late capture must still have somewhere to
+        // land. It is a checkout attempt, not an order for fulfilment, and is
+        // therefore deliberately absent from the console. A late capture
+        // changes it to Payment Review/Paid and makes it visible again.
+        if (order.status === 'Cancelled' && payment && payment.status === 'Failed') {
+            return null;
+        }
 
         return {
             id: order.id,
@@ -89,6 +100,18 @@ async function fetchOrderRows() {
                 email: customer.email,
                 phone_number: customer.phone_number
             } : null,
+            // Contact details belong to the order record, not only to an
+            // account. Guest checkout deliberately has no user_profiles row,
+            // but migration 030 freezes the buyer fields on `orders` for this
+            // exact reason. Prefer that immutable snapshot for every order and
+            // fall back to the profile only for historical pre-snapshot rows.
+            contact: {
+                full_name: order.buyer_name || (customer && customer.full_name) || null,
+                company: order.buyer_company || null,
+                email: order.buyer_email || (customer && customer.email) || null,
+                phone_number: order.buyer_phone || (customer && customer.phone_number) || null,
+                is_guest: !customer
+            },
             items: (itemsByOrder.get(String(order.id)) || []).map(item => ({
                 id: item.id,
                 product_id: item.product_id,
@@ -112,7 +135,12 @@ async function fetchOrderRows() {
                 created_at: payment.created_at
             } : null
         };
-    });
+    }).filter(Boolean);
+    const hiddenOnPage = orders.length - rows.length;
+    return {
+        rows,
+        total: count === null || count === undefined ? rows.length : Math.max(0, count - hiddenOnPage)
+    };
 }
 
 module.exports = { fetchOrderRows };

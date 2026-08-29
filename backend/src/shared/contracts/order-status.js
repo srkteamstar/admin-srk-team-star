@@ -32,7 +32,7 @@
  * The admin UI offers it only on an order already in it (see orders.js), so
  * this is round-trip capability rather than a way to un-pay a paid order.
  */
-const ORDER_STATUSES = ['Pending Payment', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+const ORDER_STATUSES = ['Pending Payment', 'Payment Review', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
 
 // The two members of that list this application's own code names, rather than
 // reading back off a row. Named constants because a typo in a string literal

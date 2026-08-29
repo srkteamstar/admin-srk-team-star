@@ -11,12 +11,15 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
-const { upload, hasValidImageSignature } = require('../../../core/uploads/image-upload');
+const { upload, normalizeImage, ImageValidationError } = require('../../../core/uploads/image-upload');
+const { readStorageSnapshot, restoreStorageSnapshot } = require('../../../core/uploads/storage-snapshots');
 const { slugify } = require('../../../shared/text');
 const { isMissingRelation, isMissingColumn, isPermissionDenied } = require('../../../core/database/postgrest-errors');
 const { PRODUCT_BUCKET, fetchProductRows, withProductImages } = require('../infrastructure/product.repository');
 const { PRODUCT_MAX_IMAGES, PRODUCT_IMAGE_SLOTS } = require('../domain/product-images');
 const { sendProductError } = require('../services/product-errors.service');
+const { isPositiveId, boundedText } = require('../../../shared/validation');
+const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
 
 /** @returns {import('express').Router} */
 function adminProductsController() {
@@ -28,7 +31,10 @@ function adminProductsController() {
         res.setHeader('Expires', '0');
 
         try {
-            const rows = await fetchProductRows();
+            const pagination = paginationFor(req, res);
+            if (!pagination) return;
+            const { rows, total } = await fetchProductRows(pagination);
+            setPaginationHeaders(res, pagination, total);
             res.status(200).json(rows.map(withProductImages));
         } catch (error) {
             console.error("Fetch Products Error:", error);
@@ -40,6 +46,9 @@ function adminProductsController() {
     // the fields a customer-facing card needs — no timestamps, no internal ids
 
     router.patch('/api/products/:id/status', requireAdmin, async (req, res) => {
+        if (!isPositiveId(req.params.id)) {
+            return res.status(400).json({ error: "Invalid product id." });
+        }
         if (typeof req.body.is_active !== 'boolean') {
             return res.status(400).json({ error: "is_active must be a boolean." });
         }
@@ -50,9 +59,10 @@ function adminProductsController() {
                 .update({ is_active: req.body.is_active, updated_at: new Date().toISOString() })
                 .eq('id', req.params.id)
                 .select()
-                .single();
+                .maybeSingle();
 
             if (error) throw error;
+            if (!data) return res.status(404).json({ error: "That product no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error("Product Status Error:", error);
@@ -85,9 +95,18 @@ function adminProductsController() {
             main_slot, remove_slots
         } = req.body || {};
 
+        try {
+            for (const [field, files] of Object.entries(req.files || {})) {
+                req.files[field] = await Promise.all(files.map(file => normalizeImage(file)));
+            }
+        } catch (error) {
+            if (error instanceof ImageValidationError) return res.status(400).json({ error: error.message });
+            throw error;
+        }
         const uploadedImages = Object.values(req.files || {}).flat();
-        if (uploadedImages.some(file => !hasValidImageSignature(file))) {
-            return res.status(400).json({ error: "Every uploaded file must be a valid AVIF or WebP image." });
+
+        if (id !== 'new' && !isPositiveId(id)) {
+            return res.status(400).json({ error: "Invalid product id." });
         }
 
         if (!name || !name.trim()) {
@@ -95,6 +114,12 @@ function adminProductsController() {
         }
         if (name.trim().length > 160) {
             return res.status(400).json({ error: "Product name is too long (max 160 characters)." });
+        }
+
+        const checkedDescription = boundedText('Product description', description, 5000);
+        if (checkedDescription.error) return res.status(400).json({ error: checkedDescription.error });
+        if (typeof url_slug === 'string' && url_slug.length > 200) {
+            return res.status(400).json({ error: "Product URL slug is too long (maximum 200 characters)." });
         }
 
         const slug = slugify(url_slug) || slugify(name);
@@ -107,7 +132,7 @@ function adminProductsController() {
             ? null
             : parseInt(category_id, 10);
 
-        if (parsedCategory !== null && Number.isNaN(parsedCategory)) {
+        if (parsedCategory !== null && (Number.isNaN(parsedCategory) || !isPositiveId(parsedCategory))) {
             return res.status(400).json({ error: "Invalid category." });
         }
 
@@ -150,7 +175,7 @@ function adminProductsController() {
         const productData = {
             name: name.trim(),
             url_slug: slug,
-            description: description?.trim() || null,
+            description: checkedDescription.value,
             featured_description: featuredCopy || null,
             price: trimmedPrice || null,
             category_id: parsedCategory,
@@ -162,15 +187,35 @@ function adminProductsController() {
             updated_at: new Date().toISOString()
         };
 
+        let productId = id;
+        let previousProduct = null;
+        let previousImages = [];
+        let created = false;
+        let committed = false;
+        const storageSnapshots = new Map();
+
         try {
-            let productId = id;
 
             if (productId && productId !== 'new') {
-                const { error } = await supabase
+                const [currentProduct, currentImages] = await Promise.all([
+                    supabase.from('products').select('*').eq('id', productId).maybeSingle(),
+                    supabase.from('product_images').select('*').eq('product_id', productId)
+                ]);
+                if (currentProduct.error) throw currentProduct.error;
+                if (currentImages.error) throw currentImages.error;
+                if (!currentProduct.data) return res.status(404).json({ error: "That product no longer exists." });
+                previousProduct = currentProduct.data;
+                previousImages = currentImages.data || [];
+
+                const { data, error } = await supabase
                     .from('products')
                     .update(productData)
-                    .eq('id', productId);
+                    .eq('id', productId)
+                    .select('id')
+                    .maybeSingle();
                 if (error) throw error;
+                if (!data) return res.status(404).json({ error: "That product no longer exists." });
+                committed = true;
             } else {
                 const { data, error } = await supabase
                     .from('products')
@@ -179,16 +224,28 @@ function adminProductsController() {
                     .single();
                 if (error) throw error;
                 productId = data.id;
+                created = true;
+                committed = true;
             }
 
             // ---- images ---------------------------------------------------------
+            const uploadedSlots = PRODUCT_IMAGE_SLOTS.filter(slot => {
+                return Boolean(req.files && req.files[`image_${slot}`] && req.files[`image_${slot}`][0]);
+            });
+            const affectedSlots = [...new Set([...slotsToRemove, ...uploadedSlots])];
+            for (const slot of affectedSlots) {
+                const path = `${productId}/${slot}`;
+                storageSnapshots.set(path, await readStorageSnapshot(PRODUCT_BUCKET, path));
+            }
+
             // Removals run first so that clearing slot 2 and uploading a new slot 2
             // in the same save ends with the new file, not a deleted one.
             if (slotsToRemove.length) {
-                await supabase
+                const { error: removeError } = await supabase
                     .storage
                     .from(PRODUCT_BUCKET)
                     .remove(slotsToRemove.map(slot => `${productId}/${slot}`));
+                if (removeError) throw removeError;
 
                 const { error: clearError } = await supabase
                     .from('product_images')
@@ -257,6 +314,45 @@ function adminProductsController() {
         } catch (error) {
             console.error("Product Save Error:", error);
 
+            if (committed) {
+                const rollbackFailures = [];
+                for (const [path, snapshot] of storageSnapshots) {
+                    try {
+                        await restoreStorageSnapshot(PRODUCT_BUCKET, path, snapshot);
+                    } catch (rollbackError) {
+                        rollbackFailures.push(rollbackError);
+                    }
+                }
+                try {
+                    if (created) {
+                        const { error: rollbackError } = await supabase.from('products').delete().eq('id', productId);
+                        if (rollbackError) throw rollbackError;
+                    } else if (previousProduct) {
+                        const { id: ignoredId, created_at: ignoredCreatedAt, ...restoreData } = previousProduct;
+                        const restoredProduct = await supabase.from('products').update(restoreData).eq('id', productId);
+                        if (restoredProduct.error) throw restoredProduct.error;
+
+                        const clearedImages = await supabase.from('product_images').delete().eq('product_id', productId);
+                        if (clearedImages.error) throw clearedImages.error;
+                        if (previousImages.length) {
+                            const rows = previousImages.map(image => ({
+                                product_id: productId,
+                                slot: image.slot,
+                                is_main: image.is_main === true,
+                                updated_at: image.updated_at
+                            }));
+                            const restoredImages = await supabase.from('product_images').upsert(rows, { onConflict: 'product_id,slot' });
+                            if (restoredImages.error) throw restoredImages.error;
+                        }
+                    }
+                } catch (rollbackError) {
+                    rollbackFailures.push(rollbackError);
+                }
+                if (rollbackFailures.length) {
+                    console.error('CRITICAL Product Save Rollback Error:', rollbackFailures);
+                }
+            }
+
             // 23505 = unique_violation on products_url_slug_key
             if (error.code === '23505') {
                 return res.status(409).json({ error: `The URL slug "${slug}" is already used by another product.` });
@@ -270,19 +366,26 @@ function adminProductsController() {
     });
 
     router.delete('/api/products/:id', requireAdmin, async (req, res) => {
+        if (!isPositiveId(req.params.id)) {
+            return res.status(400).json({ error: "Invalid product id." });
+        }
+        const productId = req.params.id;
+        const storageSnapshots = new Map();
+        let storageRemoved = false;
         try {
-            const productId = req.params.id;
+            const { data: current, error: currentError } = await supabase
+                .from('products').select('id').eq('id', productId).maybeSingle();
+            if (currentError) throw currentError;
+            if (!current) return res.status(404).json({ error: "That product no longer exists." });
 
             // The product_images rows cascade with the product, but Postgres cannot
             // reach into storage — the objects under `<id>/` have to be listed and
             // removed here or they linger in the bucket forever.
-            const { data: objects } = await supabase
+            const { data: objects, error: listError } = await supabase
                 .storage
                 .from(PRODUCT_BUCKET)
                 .list(String(productId));
-
-            const { error: dbError } = await supabase.from('products').delete().eq('id', productId);
-            if (dbError) throw dbError;
+            if (listError) throw listError;
 
             const paths = (objects || []).map(object => `${productId}/${object.name}`);
 
@@ -290,11 +393,43 @@ function adminProductsController() {
             // that predates the grouped layout from accumulating orphans.
             paths.push(`${productId}-cover`);
 
-            await supabase.storage.from(PRODUCT_BUCKET).remove(paths);
+            for (const path of paths) {
+                storageSnapshots.set(path, await readStorageSnapshot(PRODUCT_BUCKET, path));
+            }
+
+            const { error: removeError } = await supabase.storage.from(PRODUCT_BUCKET).remove(paths);
+            if (removeError) throw removeError;
+            storageRemoved = true;
+
+            const { data: deleted, error: dbError } = await supabase
+                .from('products')
+                .delete()
+                .eq('id', productId)
+                .select('id')
+                .maybeSingle();
+            if (dbError) throw dbError;
+            if (!deleted) {
+                for (const [path, snapshot] of storageSnapshots) {
+                    await restoreStorageSnapshot(PRODUCT_BUCKET, path, snapshot);
+                }
+                storageRemoved = false;
+                return res.status(404).json({ error: "That product no longer exists." });
+            }
 
             res.status(200).json({ success: true });
         } catch (error) {
             console.error("Delete Product Error:", error);
+            if (storageRemoved) {
+                const failures = [];
+                for (const [path, snapshot] of storageSnapshots) {
+                    try {
+                        await restoreStorageSnapshot(PRODUCT_BUCKET, path, snapshot);
+                    } catch (rollbackError) {
+                        failures.push(rollbackError);
+                    }
+                }
+                if (failures.length) console.error('CRITICAL Product Delete Rollback Error:', failures);
+            }
             sendProductError(res, error, "Failed to delete product.");
         }
     });

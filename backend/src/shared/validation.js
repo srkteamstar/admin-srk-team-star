@@ -60,4 +60,22 @@ const optionalNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
-module.exports = { EMAIL_PATTERN, trimmed, MAX_LENGTHS, tooLong, optionalId, optionalNumber };
+const isPositiveId = value => {
+    const text = String(value === null || value === undefined ? '' : value).trim();
+    return /^[1-9]\d{0,19}$/.test(text);
+};
+
+function boundedText(label, value, maximum, options = {}) {
+    if (value !== null && value !== undefined && typeof value !== 'string') {
+        return { error: `${label} must be text.` };
+    }
+    const result = trimmed(value);
+    if (options.required && !result) return { error: `${label} is required.` };
+    if (result.length > maximum) return { error: `${label} is too long (maximum ${maximum} characters).` };
+    return { value: result || null, error: null };
+}
+
+module.exports = {
+    EMAIL_PATTERN, trimmed, MAX_LENGTHS, tooLong, optionalId, optionalNumber,
+    isPositiveId, boundedText
+};

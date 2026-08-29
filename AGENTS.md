@@ -15,7 +15,7 @@ shared session, no shared cookie, no API call in either direction. If you find
 yourself wanting one, say why in the commit — it is a change to the shape of
 the system, not a convenience.
 
-**Run `npm run verify` after moving or renaming any file.** Three checks, about
+**Run `npm run verify` after moving or renaming any file.** Four checks, about
 a second, no network and no database. They catch the failure this structure
 makes possible: a reference that points at nothing, a module reaching past a
 sibling's published interface, or a route that quietly stopped existing.
@@ -106,7 +106,7 @@ smuggled into a structural one.
 
 ---
 
-## What is still open
+## What is still open after the production-hardening pass
 
 1. **The service-role key is in two deployments.** A second Supabase role
    scoped to what this console actually touches would shrink the blast radius.
@@ -116,5 +116,8 @@ smuggled into a structural one.
 3. **The inline handlers.** Removing `'unsafe-inline'` from `script-src` means
    extracting every `onclick=` first.
 4. **No network restriction is enforced by this application.** Password auth
-   now protects the door, but a private deployment perimeter remains worthwhile
+   protects the door, but a private deployment perimeter remains worthwhile
    defence in depth for a console with destructive routes.
+5. **The production Supabase policy and recovery review is external.** Apply
+   migrations 002–005, confirm grants/storage policies, and complete a backup
+   restore drill before sign-off.

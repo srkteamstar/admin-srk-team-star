@@ -25,6 +25,7 @@
     "GET /api/admin/session",
     "GET /api/categories",
     "GET /api/customers",
+    "GET /api/dashboard/summary",
     "GET /api/enquiries",
     "GET /api/orders",
     "GET /api/products",

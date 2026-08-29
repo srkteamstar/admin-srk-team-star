@@ -12,6 +12,7 @@
 // would fail here as well as in verify-boot.
 const BASE = 'http://localhost:3456';
 const control = require('./harness-control');
+const sharp = require('sharp');
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -24,16 +25,19 @@ function check(name, condition, detail) {
 // A cookie jar per actor, so sessions do not bleed between them.
 function jar() {
     const store = new Map();
+    let lastSetCookies = [];
     return {
         header: () => [...store.entries()].map(([k, v]) => k + '=' + v).join('; '),
         absorb: (res) => {
             const raw = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
+            lastSetCookies = raw.slice();
             raw.forEach(line => {
                 const [pair] = line.split(';');
                 const idx = pair.indexOf('=');
                 store.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
             });
         },
+        lastSetCookies: () => lastSetCookies.slice(),
         clear: () => store.clear()
     };
 }
@@ -141,18 +145,19 @@ async function reqForm(cookies, path, form) {
         r.status === 200 && r.body.admin && r.body.admin.role === 'admin', JSON.stringify(r).slice(0, 120));
 
     console.log('\n=== 3. PHONE IDENTIFIERS OPEN THE SAME ADMIN DOOR ===');
-    r = await req(admin2, 'POST', '/api/admin/login', { identifier: '+91 90000 00004', password: 'Second Admin Secure Pass' });
-    check('an administrator signs in with a phone identifier and password',
+    r = await req(admin2, 'POST', '/api/admin/login', {
+        identifier: '+91 90000 00004', password: 'Second Admin Secure Pass'
+    });
+    check('an administrator signs in with phone and password',
         r.status === 200 && r.body.admin && String(r.body.admin.id) === '101', JSON.stringify(r).slice(0, 120));
     r = await req(admin2, 'GET', '/api/customers');
     check('...and receives an administrator session', r.status === 200, JSON.stringify(r).slice(0, 80));
-
     console.log('\n=== 4. NOBODY SIGNED IN REACHES AN ADMIN ROUTE ===');
 
     // 401 rather than 403 on every one of them: from this application's point
     // of view nobody has signed in, and the honest next step is to offer the
     // door rather than to tell a stranger they are not an administrator.
-    for (const [m, p] of [['GET', '/api/customers'], ['GET', '/api/orders'], ['GET', '/api/enquiries'],
+    for (const [m, p] of [['GET', '/api/customers'], ['GET', '/api/dashboard/summary'], ['GET', '/api/orders'], ['GET', '/api/enquiries'],
                           ['GET', '/api/quote-requests'], ['GET', '/api/products'], ['GET', '/api/categories'],
                           ['GET', '/api/projects'], ['PATCH', '/api/orders/900/status'],
                           ['DELETE', '/api/products/1'], ['DELETE', '/api/enquiries/500']]) {
@@ -161,12 +166,34 @@ async function reqForm(cookies, path, form) {
     }
 
     console.log('\n=== 5. ADMIN CAN STILL DO ADMIN WORK ===');
-    for (const [m, p] of [['GET', '/api/customers'], ['GET', '/api/orders'], ['GET', '/api/enquiries'],
+    for (const [m, p] of [['GET', '/api/customers'], ['GET', '/api/dashboard/summary'], ['GET', '/api/orders'], ['GET', '/api/enquiries'],
                           ['GET', '/api/quote-requests'], ['GET', '/api/products'], ['GET', '/api/categories'],
                           ['GET', '/api/projects'], ['GET', '/api/settings/upcoming-projects-visibility']]) {
         r = await req(admin, m, p);
         check(`admin -> ${m} ${p} is 200`, r.status === 200, r.status + ' ' + JSON.stringify(r.body).slice(0, 70));
     }
+    r = await req(admin, 'GET', '/api/dashboard/summary');
+    check('dashboard summary is bounded and includes operating totals',
+        r.status === 200 && r.body.orders && r.body.orders.total >= 2
+            && Array.isArray(r.body.orders.recent) && r.body.orders.recent.length <= 5,
+        JSON.stringify(r).slice(0, 180));
+    r = await req(admin, 'GET', '/api/orders?limit=251');
+    check('list APIs reject attempts to bypass their page-size ceiling',
+        r.status === 400 && /250/.test(r.body.error || ''), JSON.stringify(r));
+    r = await req(admin, 'GET', '/api/orders');
+    const guestOrder = (r.body || []).find(order => String(order.id) === '902');
+    check('guest orders expose their frozen contact snapshot to the console',
+        r.status === 200 && guestOrder && !guestOrder.customer && guestOrder.contact
+            && guestOrder.contact.full_name === 'Guest Buyer'
+            && guestOrder.contact.email === 'guest@example.test'
+            && guestOrder.contact.phone_number === '9000000099'
+            && guestOrder.contact.is_guest === true,
+        JSON.stringify(guestOrder));
+    check('failed zero-money checkout attempts are absent from the fulfilment console',
+        !(r.body || []).some(order => String(order.id) === '899'), JSON.stringify(r.body));
+    r = await req(admin, 'GET', '/api/orders?page=2&limit=2');
+    check('list APIs support explicit bounded pages',
+        r.status === 200 && Array.isArray(r.body) && r.body.length === 1, JSON.stringify(r));
     r = await req(admin, 'PATCH', '/api/orders/900/status', { status: 'Shipped', tracking: 'TRK-A' });
     check('admin can update an order status', r.status === 200, JSON.stringify(r).slice(0, 90));
 
@@ -204,6 +231,15 @@ async function reqForm(cookies, path, form) {
     let order900 = (r.body || []).find(o => String(o.id) === '900');
     check('...and it reads back as exactly that',
         order900 && order900.status === 'Pending Payment', JSON.stringify(order900 && order900.status));
+
+    r = await req(admin, 'PATCH', '/api/orders/900/status', { status: 'Payment Review' });
+    check("order status accepts 'Payment Review' for captured-after-cancellation handling",
+        r.status === 200, JSON.stringify(r).slice(0, 90));
+
+    r = await req(admin, 'GET', '/api/orders');
+    order900 = (r.body || []).find(o => String(o.id) === '900');
+    check('...and the review state reads back without being collapsed into fulfilment',
+        order900 && order900.status === 'Payment Review', JSON.stringify(order900 && order900.status));
 
     r = await req(admin, 'PATCH', '/api/orders/900/status', { status: 'Processing' });
     check('...and it can be moved out again', r.status === 200, JSON.stringify(r).slice(0, 90));
@@ -265,7 +301,56 @@ async function reqForm(cookies, path, form) {
     r = await req(admin, 'GET', '/api/customers');
     check('...and is gone from the list',
         Array.isArray(r.body) && !r.body.some(c => String(c.id) === '202'), JSON.stringify(r.body).slice(0, 80));
-    console.log('\n=== 8. SIGN-OUT ACTUALLY ENDS THE SESSION ===');
+
+    console.log('\n=== 8. WRITE INPUTS ARE BOUNDED AND TARGETS ARE REAL ===');
+    const incompleteProject = new FormData();
+    incompleteProject.append('id', 'new');
+    incompleteProject.append('project_name', 'Only a name');
+    r = await reqForm(admin, '/api/projects', incompleteProject);
+    check('project save rejects missing required fields', r.status === 400, JSON.stringify(r));
+
+    const oversizedCategory = new FormData();
+    oversizedCategory.append('id', 'new');
+    oversizedCategory.append('name', 'x'.repeat(161));
+    r = await reqForm(admin, '/api/categories', oversizedCategory);
+    check('category save rejects an oversized name', r.status === 400, JSON.stringify(r));
+
+    r = await req(admin, 'PATCH', '/api/orders/900/status', { status: 'Processing', tracking: 'x'.repeat(201) });
+    check('order update rejects an oversized tracking reference', r.status === 400, JSON.stringify(r));
+
+    r = await req(admin, 'DELETE', '/api/enquiries/999999');
+    check('deleting a missing record returns 404 instead of false success', r.status === 404, JSON.stringify(r));
+
+    const categoryA = new FormData();
+    categoryA.append('id', '10');
+    categoryA.append('name', 'Machinery');
+    categoryA.append('parent_id', '11');
+    r = await reqForm(admin, '/api/categories', categoryA);
+    check('a valid parent relationship can be saved', r.status === 200, JSON.stringify(r));
+
+    const categoryCycle = new FormData();
+    categoryCycle.append('id', '11');
+    categoryCycle.append('name', 'Photo Frame Moldings');
+    categoryCycle.append('parent_id', '10');
+    r = await reqForm(admin, '/api/categories', categoryCycle);
+    check('category save rejects an indirect parent cycle', r.status === 400, JSON.stringify(r));
+
+    const validWebp = await sharp({
+        create: { width: 8, height: 8, channels: 4, background: '#420c14' }
+    }).webp().toBuffer();
+    const categoryWithImage = new FormData();
+    categoryWithImage.append('id', 'new');
+    categoryWithImage.append('name', 'Rollback Test Category');
+    categoryWithImage.append('description', 'Must not survive a failed file write.');
+    categoryWithImage.append('image', new Blob([validWebp], { type: 'image/webp' }), 'cover.webp');
+    control.failNextStorageOperation('upload');
+    r = await reqForm(admin, '/api/categories', categoryWithImage);
+    check('a failed category image upload reports failure', r.status === 500, JSON.stringify(r));
+    r = await req(admin, 'GET', '/api/categories');
+    check('...and rolls back the inserted category row',
+        r.status === 200 && !r.body.some(row => row.name === 'Rollback Test Category'), JSON.stringify(r).slice(0, 160));
+
+    console.log('\n=== 9. SIGN-OUT ACTUALLY ENDS THE SESSION ===');
     r = await req(admin, 'POST', '/api/auth/logout', {});
     check('logout returns 200', r.status === 200, JSON.stringify(r).slice(0, 60));
     r = await req(admin, 'GET', '/api/customers');
@@ -274,7 +359,7 @@ async function reqForm(cookies, path, form) {
     check('...and the session route reads nobody',
         r.status === 200 && r.body.admin === null, JSON.stringify(r).slice(0, 80));
 
-    console.log('\n=== 9. CROSS-ORIGIN ===');
+    console.log('\n=== 10. CROSS-ORIGIN ===');
     const cors = await fetch(BASE + '/api/admin/session', { headers: { Origin: 'https://evil.example' } });
     check('no ACAO for a foreign origin', !cors.headers.get('access-control-allow-origin'),
         String(cors.headers.get('access-control-allow-origin')));
@@ -288,6 +373,20 @@ async function reqForm(cookies, path, form) {
         { 'Sec-Fetch-Site': 'same-site' });
     check('same-site but cross-origin browser requests are refused even without Origin',
         r.status === 403, r.status + ' ' + JSON.stringify(r.body).slice(0, 60));
+
+    const forwardedHttpsJar = jar();
+    r = await req(forwardedHttpsJar, 'POST', '/api/admin/login',
+        { identifier: 'admin@example.test', password: 'Correct Horse Battery Staple' },
+        {
+            Origin: 'https://localhost:3456',
+            'X-Forwarded-Proto': 'https',
+            'Sec-Fetch-Site': 'same-origin'
+        });
+    check('trusted forwarded HTTPS is accepted by the same-origin guard',
+        r.status === 200, r.status + ' ' + JSON.stringify(r.body).slice(0, 80));
+    check('forwarded HTTPS issues a Secure administrator cookie',
+        forwardedHttpsJar.lastSetCookies().some(line => /;\s*Secure(?:;|$)/i.test(line)),
+        JSON.stringify(forwardedHttpsJar.lastSetCookies()));
 
     console.log('\n' + '='.repeat(64));
     console.log(`RESULT: ${pass} passed, ${fail} failed`);

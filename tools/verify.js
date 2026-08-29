@@ -32,7 +32,7 @@
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const CHECKS = ['verify-links.js', 'verify-boundaries.js', 'verify-boot.js'];
+const CHECKS = ['verify-links.js', 'verify-boundaries.js', 'verify-boot.js', 'verify-secrets.js'];
 
 let failed = 0;
 

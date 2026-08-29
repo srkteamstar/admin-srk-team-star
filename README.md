@@ -56,10 +56,15 @@ administrator role; changing that role remains a hand edit to
 Before the first password is set, run the storefront's additive migration
 `../#2/backend/migrations/028_restore_customer_passwords.sql` against the shared
 Supabase project. Also run
-`backend/migrations/001_create_admin_sessions.sql`; the shared session
-table is required on serverless deployments so navigation does not lose the
-login when the next request reaches another instance. Then set or replace one administrator's credential from an
+`backend/migrations/001_create_admin_sessions.sql` and this console's security
+migrations `002_security_operations.sql` through `005_admin_data_constraints.sql`; the
+shared session table and security functions are required on serverless
+deployments. Then set or replace one administrator's credential from an
 interactive terminal:
+
+If the retired `006_admin_mfa.sql` migration was previously applied, run
+`backend/migrations/007_remove_admin_mfa.sql` once to remove its unused columns
+and function.
 
 ```bash
 npm --prefix backend run set-admin-password -- admin@example.com
@@ -90,9 +95,9 @@ take you across.
 ## Verifying it
 
 ```bash
-npm run verify           # three structural checks, ~1s, no network, no database
-npm test                 # 66 API assertions against the real server.js
-npm --prefix backend run test:browser   # 4 Playwright checks on the one document
+npm run verify           # structural and secret checks, ~1s, no network, no database
+npm test                 # API/session and security assertions against server.js
+npm --prefix backend run test:browser   # Playwright checks on the one document
 npm run test:all         # all of it
 ```
 

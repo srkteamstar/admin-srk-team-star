@@ -19,6 +19,7 @@ const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin, roleNameById } = require('../../../core/security/guards');
 const { customerWriteRefusal } = require('../services/customer-write-refusal.service');
+const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
 
 /** @returns {import('express').Router} */
 function adminCustomersController() {
@@ -28,14 +29,18 @@ function adminCustomersController() {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
         try {
-            const { data: customers, error: customersError } = await supabase
+            const pagination = paginationFor(req, res);
+            if (!pagination) return;
+            const { data: customers, count, error: customersError } = await supabase
                 .from('user_profiles')
-                .select('*')
-                .order('created_at', { ascending: false });
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(pagination.from, pagination.to);
 
             if (customersError) throw customersError;
 
             if (!customers || customers.length === 0) {
+                setPaginationHeaders(res, pagination, count);
                 return res.status(200).json([]);
             }
 
@@ -154,6 +159,7 @@ function adminCustomersController() {
                 };
             });
 
+            setPaginationHeaders(res, pagination, count);
             res.status(200).json(rows);
         } catch (error) {
             console.error("Fetch Customers Error:", error);
@@ -221,40 +227,35 @@ function adminCustomersController() {
             const refusal = await customerWriteRefusal(req, req.params.id);
             if (refusal.error) return res.status(refusal.status).json({ error: refusal.error });
 
-            // head:true so this counts server-side instead of shipping every row
-            // back to be measured.
-            const { count, error: countError } = await supabase
-                .from('orders')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', req.params.id);
+            // The database function re-checks role/self/order conditions while
+            // holding the target row lock, then deletes the address and profile
+            // in one transaction. A storefront order cannot slip between a
+            // count and the delete, and a failed profile delete cannot strand
+            // the customer without their saved address.
+            const { data: result, error: deleteError } = await supabase.rpc('delete_admin_customer', {
+                p_actor_id: req.profile.id,
+                p_target_id: req.params.id
+            });
+            if (deleteError) throw deleteError;
 
-            if (countError) throw countError;
-
-            if (count > 0) {
+            if (result && result.result === 'has_orders') {
+                const count = Number(result.order_count) || 0;
                 return res.status(409).json({
                     error: `This customer has ${count} order${count === 1 ? '' : 's'} against their name. Deleting the profile would leave ${count === 1 ? 'that order' : 'those orders'} without one. Block the account instead — it stops them signing in and can be undone.`,
                     order_count: count
                 });
             }
 
-            // The saved address is the customer's own row in another table and
-            // has no meaning without them, so it goes first. Order-side
-            // addresses are a different table (order_shipping_address, a frozen
-            // per-order copy) and are unreachable from here by construction —
-            // this route only runs when there are no orders.
-            const { error: addressError } = await supabase
-                .from('shipping_addresses')
-                .delete()
-                .eq('user_id', req.params.id);
-
-            if (addressError) throw addressError;
-
-            const { error } = await supabase
-                .from('user_profiles')
-                .delete()
-                .eq('id', req.params.id);
-
-            if (error) throw error;
+            if (!result || result.result === 'not_found') {
+                return res.status(404).json({ error: "That customer no longer exists." });
+            }
+            if (result.result === 'self') {
+                return res.status(400).json({ error: "You cannot delete the account you are signed in with." });
+            }
+            if (result.result === 'administrator') {
+                return res.status(403).json({ error: "Administrator accounts cannot be deleted from here." });
+            }
+            if (result.result !== 'deleted') throw new Error('Unexpected customer deletion result.');
 
             res.status(200).json({ success: true, id: req.params.id });
         } catch (error) {

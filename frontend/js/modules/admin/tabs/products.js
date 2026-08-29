@@ -50,8 +50,8 @@ window.fetchProducts = async function() {
 
     try {
         const [productRes, categoryRes] = await Promise.all([
-            request('/api/products'),
-            request('/api/categories')
+            request('/api/products?limit=250'),
+            request('/api/categories?limit=250')
         ]);
 
         const result = await productRes.json();
@@ -416,7 +416,7 @@ window.saveProductData = async function(id) {
     }
 
     try {
-        const response = await window.adminAuth.fetch('/api/products', {
+        const response = await window.adminAuth.fetch('/api/products?limit=250', {
             method: 'POST',
             body: formData
         });

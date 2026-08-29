@@ -91,7 +91,10 @@ function securityHeaders(req, res, next) {
 
     // Only over TLS. Sent unconditionally on a plain-HTTP dev server it would
     // pin localhost to https for a year in the developer's own browser.
-    if (req.secure || req.get('x-forwarded-proto') === 'https') {
+    // req.secure already honors X-Forwarded-Proto when (and only when) the
+    // controlled proxy is trusted. Reading the raw header here would let a
+    // direct client opt itself into HSTS semantics.
+    if (req.secure) {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
 

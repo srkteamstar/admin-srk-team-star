@@ -24,8 +24,10 @@ const { sessionScope, sessionProfile, isBlocked, BLOCKED_MESSAGE, roleNameById }
 const { trimmed } = require('../../../shared/validation');
 const { adminIdentity } = require('../services/profile-view.service');
 const { resolveIdentifier, startSession } = require('../services/session.service');
-const { passwordProblem, verifyAdminPassword } = require('../services/admin-password.service');
-const { authLimiter } = require('../infrastructure/auth-rate-limit');
+const { passwordProblem, verifyAdminPassword, hashAdminPassword, needsPasswordRehash } = require('../services/admin-password.service');
+const { authLimiters } = require('../infrastructure/auth-rate-limit');
+const { updatePasswordHash } = require('../infrastructure/profile.repository');
+const { sessionCredentialMatches } = require('../../../core/security/session-credentials');
 
 // A valid scrypt value used for accounts that do not exist, are not admins, or
 // have no credential. Performing the same expensive verification keeps the
@@ -50,9 +52,10 @@ function adminAuthController() {
     //
     // The route has its own per-IP budget. There is no storefront door in this
     // process and no unrelated route that should consume the same counter.
-    router.post('/api/admin/login', authLimiter, async (req, res) => {
-        const identifier = trimmed(req.body.identifier);
-        const password = req.body.password;
+    router.post('/api/admin/login', ...authLimiters, async (req, res) => {
+        const body = req.body || {};
+        const identifier = trimmed(body.identifier);
+        const password = body.password;
 
         if (!identifier) {
             return res.status(400).json({ field: 'identifier', error: "Enter your administrator email or phone number." });
@@ -83,13 +86,28 @@ function adminAuthController() {
 
             if (!profile || role !== 'admin' || !profile.password_hash || !passwordMatches) return refuse();
             if (isBlocked(profile)) return res.status(403).json({ error: BLOCKED_MESSAGE });
+            req.auditActorId = profile.id;
+
+            if (needsPasswordRehash(profile.password_hash)) {
+                try {
+                    const upgradedHash = await hashAdminPassword(password);
+                    await updatePasswordHash(profile.id, upgradedHash);
+                    profile.password_hash = upgradedHash;
+                } catch (rehashError) {
+                    // Authentication remains valid; the next successful login
+                    // retries the upgrade. Never log the password or hash.
+                    console.error('Administrator password rehash failed', {
+                        profile_id: profile.id,
+                        error: rehashError && rehashError.message ? rehashError.message : String(rehashError)
+                    });
+                }
+            }
 
             // 'admin' is what separates this session from a storefront one, and
             // the regenerate inside destroys whatever customer session this
             // browser was holding. Signing in here signs you out of the store —
             // that is the intended behaviour, not a side effect to work around.
-            await startSession(req, profile.id, 'admin');
-
+            await startSession(req, profile.id, 'admin', profile.password_hash);
             res.status(200).json({ admin: adminIdentity(profile) });
         } catch (error) {
             console.error("Admin Login Error:", error);
@@ -115,6 +133,11 @@ function adminAuthController() {
 
             const profile = await sessionProfile(req);
             if (!profile || isBlocked(profile)) return res.status(200).json({ admin: null });
+            if (!sessionCredentialMatches(req, profile)) {
+                req.session.destroy(() => {});
+                res.clearCookie('srk_admin_sid');
+                return res.status(200).json({ admin: null });
+            }
 
             const role = await roleNameById(profile.role_id);
             if (role !== 'admin') return res.status(200).json({ admin: null });

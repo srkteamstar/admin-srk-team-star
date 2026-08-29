@@ -34,7 +34,7 @@ test('the sign-in gate is a modal boundary and the app is inert behind it', asyn
     await expect(page.locator('#admin-identifier')).toHaveAttribute('autocomplete', 'username');
     await expect(page.locator('#admin-password')).toBeVisible();
     await expect(page.locator('#admin-password')).toHaveAttribute('autocomplete', 'current-password');
-    await expect(page.locator('#admin-code')).toHaveCount(0);
+    await expect(page.locator('#admin-mfa-code')).toHaveCount(0);
 });
 
 // The storefront is a different origin now, so the logo cannot link a path.
@@ -60,6 +60,14 @@ test('dashboard is operational, revenue is shipped-only, and order actions open 
 
     await page.locator('#nav-orders').click();
     await expect(page.locator('#stat-order-revenue')).toHaveText('₹ 2,360');
+    await expect(page.getByText('Failed Buyer')).toHaveCount(0);
+
+    await expect(page.getByText('Guest Buyer').first()).toBeVisible();
+    await page.evaluate(() => window.handleOrderAction(902));
+    await expect(page.getByText('Customer contact')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'guest@example.test', exact: true })).toBeVisible();
+    await expect(page.getByText('9000000099')).toBeVisible();
+    await expect(page.getByText('Guest checkout')).toBeVisible();
 
     const actionButton = page.locator('#order-actions-button-901');
     const actionMenu = page.locator('#order-actions-menu-901');
@@ -71,6 +79,29 @@ test('dashboard is operational, revenue is shipped-only, and order actions open 
     await page.keyboard.press('Escape');
     await expect(actionMenu).toBeHidden();
     await expect(actionButton).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('Payment Review is visible, explained, and never offered on ordinary orders', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#admin-identifier').fill('admin@example.test');
+    await page.locator('#admin-password').fill('Correct Horse Battery Staple');
+    await page.locator('#admin-signin-submit').click();
+    await expect(page.getByRole('heading', { name: 'Your store, at a glance.' })).toBeVisible();
+
+    await page.locator('#nav-orders').click();
+    await expect(page.locator('#stat-order-revenue')).toHaveText('₹ 2,360');
+    expect(await page.evaluate(() => window.orderStatusOptions('Payment Review'))).toEqual([
+        'Payment Review', 'Processing', 'Shipped', 'Delivered', 'Cancelled'
+    ]);
+    expect(await page.evaluate(() => window.orderStatusOptions('Processing'))).not.toContain('Payment Review');
+
+    await page.evaluate(() => {
+        window.orderData[0].status = 'Payment Review';
+        window.orderData[0].payment = Object.assign({}, window.orderData[0].payment, { status: 'Paid' });
+        window.handleOrderAction(window.orderData[0].id);
+    });
+    await expect(page.getByText('Captured payment needs review')).toBeVisible();
+    await expect(page.getByText(/confirm the gateway transaction/i)).toBeVisible();
 });
 
 test('stored project copy is rendered as text rather than executable markup', async ({ page }) => {

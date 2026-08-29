@@ -15,7 +15,7 @@
 const crypto = require('crypto');
 const session = require('express-session');
 
-const DEFAULT_TTL_MS = 8 * 60 * 60 * 1000;
+const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
 const sessionKey = (sid) => crypto.createHash('sha256').update(String(sid)).digest('hex');
 

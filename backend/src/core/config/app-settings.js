@@ -27,12 +27,26 @@ function applyAppSettings(app) {
     // you control (usually 1). Erring in the safe direction costs nothing but a
     // shared bucket for everyone behind the same NAT. Erring the other way
     // removes rate limiting altogether.
-    const TRUST_PROXY = process.env.TRUST_PROXY;
-    if (TRUST_PROXY) {
-        app.set('trust proxy', /^\d+$/.test(TRUST_PROXY) ? Number(TRUST_PROXY) : TRUST_PROXY);
-    } else {
-        app.set('trust proxy', false);
+    const rawTrustProxy = String(process.env.TRUST_PROXY || '').trim().toLowerCase();
+    let trustProxy = false;
+
+    if (!rawTrustProxy && process.env.VERCEL) {
+        // Vercel overwrites the forwarded address/protocol headers before the
+        // request reaches this function. One hop makes req.ip and req.protocol
+        // describe the browser rather than the internal function connection.
+        trustProxy = 1;
+    } else if (rawTrustProxy === 'true') {
+        // A boolean true trusts the whole chain and is too broad on an arbitrary
+        // host. Treat it as the ordinary single controlled proxy instead.
+        trustProxy = 1;
+    } else if (rawTrustProxy && rawTrustProxy !== 'false' && rawTrustProxy !== '0') {
+        if (!/^\d+$/.test(rawTrustProxy) || Number(rawTrustProxy) < 1 || Number(rawTrustProxy) > 10) {
+            throw new Error('TRUST_PROXY must be false, 0, true, or a positive proxy hop count no greater than 10.');
+        }
+        trustProxy = Number(rawTrustProxy);
     }
+
+    app.set('trust proxy', trustProxy);
 
     // Version fingerprinting for free on every response. Nothing reads it.
     app.disable('x-powered-by');

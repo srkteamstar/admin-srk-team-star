@@ -27,6 +27,8 @@ const db = {
     // database exercises the same persistence boundary as separate Vercel
     // function instances rather than silently falling back to MemoryStore.
     admin_sessions: [],
+    admin_rate_limits: [],
+    admin_audit_events: [],
     roles: [
         { id: 1, role_name: 'admin' },
         { id: 2, role_name: 'customer' }
@@ -55,26 +57,40 @@ const db = {
         { id: 2, user_id: 201, full_address: '2 B Street', city: 'Sonipat', state: 'Haryana', country: 'India', zip_code: '131001' }
     ],
     orders: [
+        { id: 899, order_number: 899, user_id: null, status: 'Cancelled', tracking: null,
+          buyer_name: 'Failed Buyer', buyer_email: 'failed@example.test', buyer_phone: '9000000088',
+          amount: 1000, shipping_amount: 0, tax_amount: 180, net_amount: 1180, created_at: '2026-01-31T00:00:00Z' },
         { id: 900, order_number: 900, user_id: 200, status: 'Processing', tracking: null,
           amount: 1000, shipping_amount: 0, tax_amount: 180, net_amount: 1180, created_at: '2026-02-01T00:00:00Z' },
         { id: 901, order_number: 901, user_id: 201, status: 'Shipped', tracking: 'TRK-B',
-          amount: 2000, shipping_amount: 0, tax_amount: 360, net_amount: 2360, created_at: '2026-02-02T00:00:00Z' }
+          amount: 2000, shipping_amount: 0, tax_amount: 360, net_amount: 2360, created_at: '2026-02-02T00:00:00Z' },
+        { id: 902, order_number: 902, user_id: null, status: 'Pending Payment', tracking: null,
+          buyer_name: 'Guest Buyer', buyer_company: 'Guest Works', buyer_email: 'guest@example.test', buyer_phone: '9000000099',
+          amount: 1000, shipping_amount: 0, tax_amount: 180, net_amount: 1180, created_at: '2026-02-03T00:00:00Z' }
     ],
     order_items: [
         { id: 1, order_id: 900, product_id: 1, product_name: 'Fake Machine', price: 1000, quantity: 1, total_amount: 1000 },
-        { id: 2, order_id: 901, product_id: 1, product_name: 'Fake Machine', price: 1000, quantity: 2, total_amount: 2000 }
+        { id: 2, order_id: 901, product_id: 1, product_name: 'Fake Machine', price: 1000, quantity: 2, total_amount: 2000 },
+        { id: 3, order_id: 902, product_id: 1, product_name: 'Fake Machine', price: 1000, quantity: 1, total_amount: 1000 }
     ],
     order_shipping_address: [
         { id: 1, order_id: 900, full_address: '1 A Street', city: 'Gohana', state: 'Haryana', country: 'India', zip_code: '131301' },
-        { id: 2, order_id: 901, full_address: '2 B Street', city: 'Sonipat', state: 'Haryana', country: 'India', zip_code: '131001' }
+        { id: 2, order_id: 901, full_address: '2 B Street', city: 'Sonipat', state: 'Haryana', country: 'India', zip_code: '131001' },
+        { id: 3, order_id: 902, full_address: '9 Guest Lane', city: 'Gohana', state: 'Haryana', country: 'India', zip_code: '131301' }
     ],
     payments: [
+        { id: 0, order_id: 899, gateway: 'razorpay', payment_method: null, amount: 1180,
+          amount_paise: 118000, currency: 'INR', gateway_order_id: 'order_failed_899', transaction_id: null,
+          status: 'Failed', verified_at: null, created_at: '2026-01-31T00:00:00Z' },
         { id: 1, order_id: 900, gateway: 'offline', payment_method: 'Bank Transfer', amount: 1180,
           amount_paise: 118000, currency: 'INR', gateway_order_id: null, transaction_id: null,
           status: 'Pending', verified_at: null, created_at: '2026-02-01T00:00:00Z' },
         { id: 2, order_id: 901, gateway: 'offline', payment_method: 'UPI', amount: 2360,
           amount_paise: 236000, currency: 'INR', gateway_order_id: null, transaction_id: null,
-          status: 'Pending', verified_at: null, created_at: '2026-02-02T00:00:00Z' }
+          status: 'Pending', verified_at: null, created_at: '2026-02-02T00:00:00Z' },
+        { id: 3, order_id: 902, gateway: 'razorpay', payment_method: null, amount: 1180,
+          amount_paise: 118000, currency: 'INR', gateway_order_id: 'order_guest_902', transaction_id: null,
+          status: 'Created', verified_at: null, created_at: '2026-02-03T00:00:00Z' }
     ],
     // Migration 014's append-only webhook log. Empty rather than absent: the
     // stub's insert pushes into `db[table] || []`, and an absent table means
@@ -167,6 +183,7 @@ const db = {
 };
 
 let nextId = 10000;
+const storageObjects = new Map();
 
 // THE UNIQUE INDEXES THAT CARRY THE IDEMPOTENCY GUARANTEE.
 //
@@ -193,7 +210,7 @@ const UPSERT_DEFAULT_KEYS = {
 
 // ---- A chainable stub matching the slice of PostgREST that server.js uses ----
 function makeQuery(table) {
-    const state = { table, filters: [], op: 'select', payload: null, wantSingle: null, order: null, count: null, head: false };
+    const state = { table, filters: [], op: 'select', payload: null, wantSingle: null, order: null, range: null, count: null, head: false };
 
     const rows = () => (db[state.table] || []);
 
@@ -246,6 +263,7 @@ function makeQuery(table) {
         eq(column, value) { state.filters.push({ type: 'eq', column, value }); return q; },
         in(column, value) { state.filters.push({ type: 'in', column, value }); return q; },
         order(column, options) { state.order = { column, asc: !options || options.ascending !== false }; return q; },
+        range(from, to) { state.range = { from, to }; return q; },
         limit() { return q; },
         insert(payload) { state.op = 'insert'; state.payload = payload; return q; },
         update(payload) { state.op = 'update'; state.payload = payload; return q; },
@@ -264,9 +282,11 @@ function makeQuery(table) {
     async function run() {
         try {
             let data;
+            let matchedTotal = 0;
 
             if (state.op === 'select') {
                 data = rows().filter(matches).map(r => Object.assign({}, r));
+                matchedTotal = data.length;
 
                 // One level of embedding, joined the way the real schema is:
                 // the child carries `<singular parent>_id`. quote_requests ->
@@ -293,6 +313,7 @@ function makeQuery(table) {
                     const { column, asc } = state.order;
                     data.sort((a, b) => (a[column] > b[column] ? 1 : a[column] < b[column] ? -1 : 0) * (asc ? 1 : -1));
                 }
+                if (state.range) data = data.slice(state.range.from, state.range.to + 1);
             } else if (state.op === 'insert') {
                 const list = Array.isArray(state.payload) ? state.payload : [state.payload];
                 const unique = UNIQUE_INDEXES[state.table] || [];
@@ -354,7 +375,7 @@ function makeQuery(table) {
             }
 
             if (state.count) {
-                const total = Array.isArray(data) ? data.length : 0;
+                const total = state.op === 'select' ? matchedTotal : (Array.isArray(data) ? data.length : 0);
                 return { data: state.head ? null : data, count: total, error: null };
             }
 
@@ -375,6 +396,86 @@ function makeQuery(table) {
 const fakeSupabase = {
     from: (table) => makeQuery(table),
     rpc: async (name, args) => {
+        if (name === 'admin_category_product_counts') {
+            const counts = new Map();
+            db.products.forEach(row => {
+                if (row.category_id === null || row.category_id === undefined) return;
+                const key = String(row.category_id);
+                counts.set(key, (counts.get(key) || 0) + 1);
+            });
+            return {
+                data: [...counts].map(([category_id, product_count]) => ({ category_id, product_count })),
+                error: null
+            };
+        }
+        if (name === 'admin_dashboard_summary') {
+            const byStatus = status => db.orders.filter(row => row.status === status);
+            const recent = db.orders.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5)
+                .map(order => {
+                    const customer = db.user_profiles.find(row => String(row.id) === String(order.user_id));
+                    return {
+                        id: order.id,
+                        order_number: order.order_number,
+                        status: order.status || 'Processing',
+                        net_amount: order.net_amount,
+                        created_at: order.created_at,
+                        customer: customer ? { id: customer.id, full_name: customer.full_name, email: customer.email } : null
+                    };
+                });
+            return { data: {
+                orders: {
+                    total: db.orders.length,
+                    pending_payment: byStatus('Pending Payment').length,
+                    processing: byStatus('Processing').length,
+                    shipped: byStatus('Shipped').length,
+                    delivered: byStatus('Delivered').length,
+                    shipped_revenue: byStatus('Shipped').reduce((sum, row) => sum + (Number(row.net_amount) || 0), 0),
+                    recent
+                },
+                active_products: db.products.filter(row => row.is_active !== false).length,
+                categories: db.categories.length,
+                customers: db.user_profiles.length,
+                open_enquiries: db.enquiries.filter(row => row.status !== 'Resolved').length,
+                open_quotes: db.quote_requests.filter(row => row.status !== 'Resolved').length
+            }, error: null };
+        }
+        if (name === 'consume_admin_rate_limit') {
+            const now = Date.now();
+            let row = db.admin_rate_limits.find(item => item.rate_key === args.p_key);
+            const windowMs = Number(args.p_window_ms);
+            if (!row || new Date(row.window_started_at).getTime() + windowMs <= now) {
+                if (!row) {
+                    row = { rate_key: args.p_key };
+                    db.admin_rate_limits.push(row);
+                }
+                row.hit_count = 1;
+                row.window_started_at = new Date(now).toISOString();
+            } else {
+                row.hit_count += 1;
+            }
+            row.updated_at = new Date(now).toISOString();
+            return {
+                data: [{
+                    total_hits: row.hit_count,
+                    reset_time: new Date(new Date(row.window_started_at).getTime() + windowMs).toISOString()
+                }],
+                error: null
+            };
+        }
+        if (name === 'delete_admin_customer') {
+            const target = db.user_profiles.find(row => String(row.id) === String(args.p_target_id));
+            if (!target) return { data: { result: 'not_found' }, error: null };
+            if (String(args.p_actor_id) === String(args.p_target_id)) return { data: { result: 'self' }, error: null };
+            const role = db.roles.find(row => String(row.id) === String(target.role_id));
+            if (role && String(role.role_name).toLowerCase() === 'admin') {
+                return { data: { result: 'administrator' }, error: null };
+            }
+            const orderCount = db.orders.filter(row => String(row.user_id) === String(args.p_target_id)).length;
+            if (orderCount) return { data: { result: 'has_orders', order_count: orderCount }, error: null };
+            db.shipping_addresses = db.shipping_addresses.filter(row => String(row.user_id) !== String(args.p_target_id));
+            db.user_profiles = db.user_profiles.filter(row => String(row.id) !== String(args.p_target_id));
+            return { data: { result: 'deleted', id: args.p_target_id }, error: null };
+        }
         if (name !== 'create_store_order') return { data: null, error: { message: `unstubbed RPC: ${name}` } };
         if (control.consumeAtomicCheckoutFailure()) {
             return { data: null, error: { message: 'forced atomic checkout failure' } };
@@ -396,7 +497,39 @@ const fakeSupabase = {
         db.payments.push(payment);
         return { data: { order: Object.assign({}, order), payment: Object.assign({}, payment) }, error: null };
     },
-    storage: { from: () => ({ upload: async () => ({ error: null }), remove: async () => ({ error: null }) }) }
+    storage: {
+        from: bucket => ({
+            async download(path) {
+                const object = storageObjects.get(`${bucket}/${path}`);
+                if (!object) return { data: null, error: { statusCode: 404, message: 'Object not found' } };
+                return { data: new Blob([object.buffer], { type: object.contentType }), error: null };
+            },
+            async upload(path, buffer, options) {
+                if (control.consumeStorageFailure('upload')) {
+                    return { data: null, error: { statusCode: 503, message: 'forced storage upload failure' } };
+                }
+                storageObjects.set(`${bucket}/${path}`, {
+                    buffer: Buffer.from(buffer),
+                    contentType: (options && options.contentType) || 'application/octet-stream'
+                });
+                return { data: { path }, error: null };
+            },
+            async remove(paths) {
+                if (control.consumeStorageFailure('remove')) {
+                    return { data: null, error: { statusCode: 503, message: 'forced storage remove failure' } };
+                }
+                (paths || []).forEach(path => storageObjects.delete(`${bucket}/${path}`));
+                return { data: [], error: null };
+            },
+            async list(prefix) {
+                const start = `${bucket}/${prefix}/`;
+                const data = [...storageObjects.keys()]
+                    .filter(key => key.startsWith(start))
+                    .map(key => ({ name: key.slice(start.length) }));
+                return { data, error: null };
+            }
+        })
+    }
 };
 
 // ---- Intercept the supabase module before server.js requires it -------------
@@ -521,7 +654,10 @@ process.env.SESSION_SECRET = 'harness-session-secret-that-is-long-enough-32';
 // NO GATEWAY VARIABLES. This process never takes money, so there is no
 // Razorpay configuration for it to assert at boot and nothing here to stub.
 delete process.env.NODE_ENV;
-delete process.env.TRUST_PROXY;
+// Production HTTPS is terminated at a controlled proxy. Keeping the harness on
+// one trusted hop lets the suite exercise X-Forwarded-Proto while ordinary
+// local requests without that header continue to behave as plain HTTP.
+process.env.TRUST_PROXY = '1';
 delete process.env.ALLOWED_ORIGINS;
 
 // The real file, not a copy — a copied server.js is a test that

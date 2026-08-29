@@ -12,10 +12,11 @@
  */
 const { supabase } = require('../../../core/database/supabase');
 const { roleNameById } = require('../../../core/security/guards');
+const { isPositiveId } = require('../../../shared/validation');
 
 async function customerWriteRefusal(req, targetId) {
-    if (!targetId) {
-        return { status: 400, error: "No customer id given." };
+    if (!isPositiveId(targetId)) {
+        return { status: 400, error: "Invalid customer id." };
     }
 
     // Compared as strings: req.params is text, the column is a bigint, and

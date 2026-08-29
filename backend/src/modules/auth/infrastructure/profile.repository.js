@@ -24,6 +24,14 @@ async function addressForUser(userId) {
     return data || null;
 }
 
+async function updatePasswordHash(userId, passwordHash) {
+    const { error } = await supabase
+        .from('user_profiles')
+        .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+    if (error) throw error;
+}
+
 // One shape for every route that hands a customer back, and deliberately the
 // shape profile-icon-loader.js already reads — the overlay was written
 // against these names when they came out of localStorage, so pointing it at
@@ -32,4 +40,4 @@ async function addressForUser(userId) {
 // The address is flattened into the profile rather than nested, for the same
 // reason: one saved address is a property of the customer, and nesting it
 
-module.exports = { addressForUser };
+module.exports = { addressForUser, updatePasswordHash };

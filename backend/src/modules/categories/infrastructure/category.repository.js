@@ -20,14 +20,13 @@ const { countProductsByCategory } = require('../../products/products.public');
 
 const CATEGORY_BUCKET = 'category-images';
 
-async function fetchCategoryRows() {
-    const [fromView, counts] = await Promise.all([
-        supabase
+async function fetchCategoryRows(pagination) {
+    let viewQuery = supabase
             .from('categories_with_image')
-            .select('*')
-            .order('name', { ascending: true }),
-        countProductsByCategory()
-    ]);
+            .select('*', { count: 'exact' })
+            .order('name', { ascending: true });
+    if (pagination) viewQuery = viewQuery.range(pagination.from, pagination.to);
+    const [fromView, counts] = await Promise.all([viewQuery, countProductsByCategory()]);
 
     // Set on the way out in both branches, so `product_count` on the response is
     // always the derived number and never whatever the column happens to hold.
@@ -36,20 +35,26 @@ async function fetchCategoryRows() {
         product_count: counts.get(String(category.id)) || 0
     });
 
-    if (!fromView.error) return (fromView.data || []).map(withCount);
+    if (!fromView.error) return {
+        rows: (fromView.data || []).map(withCount),
+        total: fromView.count === null || fromView.count === undefined ? (fromView.data || []).length : fromView.count
+    };
 
-    const fromTable = await supabase
+    let tableQuery = supabase
         .from('categories')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('name', { ascending: true });
+    if (pagination) tableQuery = tableQuery.range(pagination.from, pagination.to);
+    const fromTable = await tableQuery;
 
     if (fromTable.error) throw fromTable.error;
 
-    return (fromTable.data || []).map(category => withCount({
+    const rows = (fromTable.data || []).map(category => withCount({
         ...category,
         image_path: `${category.id}-cover`,
         image_updated_at: category.updated_at
     }));
+    return { rows, total: fromTable.count === null || fromTable.count === undefined ? rows.length : fromTable.count };
 }
 
 // ?v=<timestamp> so a replaced cover shows up immediately instead of being

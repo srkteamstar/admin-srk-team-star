@@ -20,7 +20,7 @@ window.escapeProjectText = function(value) {
 // Initialization Fetch with Strict Cache Bypassing
 window.fetchUpcomingProjects = async function() {
     try {
-        const response = await window.adminAuth.fetch('/api/projects', {
+        const response = await window.adminAuth.fetch('/api/projects?limit=250', {
             cache: 'no-store'
         });
 
@@ -325,7 +325,7 @@ window.saveProjectData = async function(id) {
     }
 
     try {
-        const response = await window.adminAuth.fetch('/api/projects', {
+        const response = await window.adminAuth.fetch('/api/projects?limit=250', {
             method: 'POST',
             body: formData
         });

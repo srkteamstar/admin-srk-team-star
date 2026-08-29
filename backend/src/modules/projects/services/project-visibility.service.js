@@ -13,13 +13,15 @@ const SECTION_VISIBILITY_KEY = 'upcoming_projects_section_visible';
 // Missing row is treated as visible so the section never silently disappears
 // if the settings row is deleted.
 async function isSectionVisible() {
-    const { data } = await supabase
+    const { data, error } = await supabase
         .from('site_settings')
         .select('value')
         .eq('key', SECTION_VISIBILITY_KEY)
         .maybeSingle();
 
-    return data ? data.value : true;
+    if (error) throw error;
+
+    return data ? data.value === true : true;
 }
 
 module.exports = { SECTION_VISIBILITY_KEY, isSectionVisible };

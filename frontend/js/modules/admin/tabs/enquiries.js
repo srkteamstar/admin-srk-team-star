@@ -110,7 +110,7 @@ window.loadEnquiries = async function(forceRefresh = false) {
     }
 
     try {
-        const response = await window.adminAuth.fetch('/api/enquiries');
+        const response = await window.adminAuth.fetch('/api/enquiries?limit=250');
         
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         

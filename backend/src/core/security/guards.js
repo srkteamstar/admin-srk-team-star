@@ -17,6 +17,7 @@
  * record of why the two roles have two doors.
  */
 const { supabase } = require('../database/supabase');
+const { sessionCredentialMatches } = require('./session-credentials');
 
 // AUTHORIZATION
 //
@@ -129,6 +130,12 @@ async function requireAdmin(req, res, next) {
         const profile = await sessionProfile(req);
         if (!profile) {
             return res.status(401).json({ error: "Not signed in." });
+        }
+
+        if (!sessionCredentialMatches(req, profile)) {
+            req.session.destroy(() => {});
+            res.clearCookie('srk_admin_sid');
+            return res.status(401).json({ error: "Your administrator session expired. Sign in again." });
         }
 
         // Read fresh every request: an administrator demoted or suspended

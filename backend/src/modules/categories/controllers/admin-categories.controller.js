@@ -9,9 +9,34 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
-const { upload, hasValidImageSignature } = require('../../../core/uploads/image-upload');
+const { upload, normalizeImage, ImageValidationError } = require('../../../core/uploads/image-upload');
+const { readStorageSnapshot, restoreStorageSnapshot, removeStorageObject } = require('../../../core/uploads/storage-snapshots');
 const { slugify } = require('../../../shared/text');
 const { CATEGORY_BUCKET, fetchCategoryRows, withImageUrl } = require('../infrastructure/category.repository');
+const { isPositiveId, boundedText } = require('../../../shared/validation');
+const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
+
+async function parentProblemFor(categoryId, parentId) {
+    if (parentId === null) return null;
+    const { data, error } = await supabase.from('categories').select('id, parent_id');
+    if (error) throw error;
+
+    const parentById = new Map((data || []).map(row => [String(row.id), row.parent_id]));
+    if (!parentById.has(String(parentId))) return "That parent category no longer exists.";
+
+    const seen = new Set();
+    let cursor = String(parentId);
+    while (cursor) {
+        if (categoryId !== null && String(categoryId) === cursor) {
+            return "A category parent relationship cannot contain a cycle.";
+        }
+        if (seen.has(cursor)) return "The selected parent already belongs to a category cycle.";
+        seen.add(cursor);
+        const next = parentById.get(cursor);
+        cursor = next === null || next === undefined ? '' : String(next);
+    }
+    return null;
+}
 
 /** @returns {import('express').Router} */
 function adminCategoriesController() {
@@ -23,7 +48,10 @@ function adminCategoriesController() {
         res.setHeader('Expires', '0');
 
         try {
-            const rows = await fetchCategoryRows();
+            const pagination = paginationFor(req, res);
+            if (!pagination) return;
+            const { rows, total } = await fetchCategoryRows(pagination);
+            setPaginationHeaders(res, pagination, total);
             res.status(200).json(rows.map(withImageUrl));
         } catch (error) {
             console.error("Fetch Categories Error:", error);
@@ -41,6 +69,9 @@ function adminCategoriesController() {
     // filtered out of the response, so a child whose parent_id points at a missing
 
     router.patch('/api/categories/:id/status', requireAdmin, async (req, res) => {
+        if (!isPositiveId(req.params.id)) {
+            return res.status(400).json({ error: "Invalid category id." });
+        }
         if (typeof req.body.is_active !== 'boolean') {
             return res.status(400).json({ error: "is_active must be a boolean." });
         }
@@ -51,9 +82,10 @@ function adminCategoriesController() {
                 .update({ is_active: req.body.is_active, updated_at: new Date().toISOString() })
                 .eq('id', req.params.id)
                 .select()
-                .single();
+                .maybeSingle();
 
             if (error) throw error;
+            if (!data) return res.status(404).json({ error: "That category no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error("Category Status Error:", error);
@@ -70,17 +102,26 @@ function adminCategoriesController() {
             next();
         });
     }, async (req, res) => {
-        const { id, name, url_slug, description, parent_id, is_featured, is_active, remove_image } = req.body;
+        const { id, name, url_slug, description, parent_id, is_featured, is_active, remove_image } = req.body || {};
 
-        if (req.file && !hasValidImageSignature(req.file)) {
-            return res.status(400).json({ error: "The uploaded file is not a valid AVIF or WebP image." });
+        try {
+            if (req.file) req.file = await normalizeImage(req.file);
+        } catch (error) {
+            if (error instanceof ImageValidationError) return res.status(400).json({ error: error.message });
+            throw error;
         }
 
-        if (!name || !name.trim()) {
-            return res.status(400).json({ error: "Category name is required." });
+        if (id !== 'new' && !isPositiveId(id)) return res.status(400).json({ error: "Invalid category id." });
+        const checkedName = boundedText('Category name', name, 160, { required: true });
+        const checkedDescription = boundedText('Category description', description, 5000);
+        if (checkedName.error || checkedDescription.error) {
+            return res.status(400).json({ error: checkedName.error || checkedDescription.error });
+        }
+        if (typeof url_slug === 'string' && url_slug.length > 200) {
+            return res.status(400).json({ error: "Category URL slug is too long (maximum 200 characters)." });
         }
 
-        const slug = slugify(url_slug) || slugify(name);
+        const slug = slugify(url_slug) || slugify(checkedName.value);
         if (!slug) {
             return res.status(400).json({ error: "Could not build a URL slug from that name. Use letters or numbers." });
         }
@@ -92,7 +133,7 @@ function adminCategoriesController() {
             ? null
             : parseInt(parent_id, 10);
 
-        if (parsedParent !== null && Number.isNaN(parsedParent)) {
+        if (parsedParent !== null && (Number.isNaN(parsedParent) || !isPositiveId(parsedParent))) {
             return res.status(400).json({ error: "Invalid parent category." });
         }
         if (parsedParent !== null && id && id !== 'new' && String(parsedParent) === String(id)) {
@@ -100,24 +141,43 @@ function adminCategoriesController() {
         }
 
         const categoryData = {
-            name: name.trim(),
+            name: checkedName.value,
             url_slug: slug,
-            description: description?.trim() || null,
+            description: checkedDescription.value,
             parent_id: parsedParent,
             is_featured: is_featured === 'true' || is_featured === true,
             is_active: is_active === undefined ? true : (is_active === 'true' || is_active === true),
             updated_at: new Date().toISOString()
         };
 
+        let categoryId = id;
+        let previousRow = null;
+        let created = false;
+        let committed = false;
+        let storageSnapshot;
+        let storageSnapshotReady = false;
+        const storageRequested = Boolean(req.file) || remove_image === 'true' || remove_image === true;
+
         try {
-            let categoryId = id;
+            const parentProblem = await parentProblemFor(categoryId === 'new' ? null : categoryId, parsedParent);
+            if (parentProblem) return res.status(400).json({ error: parentProblem });
 
             if (categoryId && categoryId !== 'new') {
-                const { error } = await supabase
+                const { data: current, error: currentError } = await supabase
+                    .from('categories').select('*').eq('id', categoryId).maybeSingle();
+                if (currentError) throw currentError;
+                if (!current) return res.status(404).json({ error: "That category no longer exists." });
+                previousRow = current;
+
+                const { data, error } = await supabase
                     .from('categories')
                     .update(categoryData)
-                    .eq('id', categoryId);
+                    .eq('id', categoryId)
+                    .select('id')
+                    .maybeSingle();
                 if (error) throw error;
+                if (!data) return res.status(404).json({ error: "That category no longer exists." });
+                committed = true;
             } else {
                 const { data, error } = await supabase
                     .from('categories')
@@ -126,9 +186,16 @@ function adminCategoriesController() {
                     .single();
                 if (error) throw error;
                 categoryId = data.id;
+                created = true;
+                committed = true;
             }
 
             const fileName = `${categoryId}-cover`;
+
+            if (storageRequested) {
+                storageSnapshot = await readStorageSnapshot(CATEGORY_BUCKET, fileName);
+                storageSnapshotReady = true;
+            }
 
             if (req.file) {
                 const { error: uploadError } = await supabase
@@ -154,6 +221,24 @@ function adminCategoriesController() {
         } catch (error) {
             console.error("Category Save Error:", error);
 
+            if (committed) {
+                try {
+                    if (storageSnapshotReady) {
+                        await restoreStorageSnapshot(CATEGORY_BUCKET, `${categoryId}-cover`, storageSnapshot);
+                    }
+                    if (created) {
+                        const { error: rollbackError } = await supabase.from('categories').delete().eq('id', categoryId);
+                        if (rollbackError) throw rollbackError;
+                    } else if (previousRow) {
+                        const { id: ignoredId, created_at: ignoredCreatedAt, ...restoreData } = previousRow;
+                        const { error: rollbackError } = await supabase.from('categories').update(restoreData).eq('id', categoryId);
+                        if (rollbackError) throw rollbackError;
+                    }
+                } catch (rollbackError) {
+                    console.error('CRITICAL Category Save Rollback Error:', rollbackError);
+                }
+            }
+
             // 23505 = unique_violation on categories_url_slug_key
             if (error.code === '23505') {
                 return res.status(409).json({ error: `The URL slug "${slug}" is already used by another category.` });
@@ -163,17 +248,44 @@ function adminCategoriesController() {
     });
 
     router.delete('/api/categories/:id', requireAdmin, async (req, res) => {
+        if (!isPositiveId(req.params.id)) {
+            return res.status(400).json({ error: "Invalid category id." });
+        }
+        const categoryId = req.params.id;
+        const objectPath = `${categoryId}-cover`;
+        let snapshot;
+        let storagePrepared = false;
         try {
-            const categoryId = req.params.id;
+            const { data: current, error: currentError } = await supabase
+                .from('categories').select('id').eq('id', categoryId).maybeSingle();
+            if (currentError) throw currentError;
+            if (!current) return res.status(404).json({ error: "That category no longer exists." });
 
-            const { error: dbError } = await supabase.from('categories').delete().eq('id', categoryId);
+            snapshot = await removeStorageObject(CATEGORY_BUCKET, objectPath);
+            storagePrepared = true;
+
+            const { data: deleted, error: dbError } = await supabase
+                .from('categories')
+                .delete()
+                .eq('id', categoryId)
+                .select('id')
+                .maybeSingle();
             if (dbError) throw dbError;
-
-            await supabase.storage.from(CATEGORY_BUCKET).remove([`${categoryId}-cover`]);
+            if (!deleted) {
+                await restoreStorageSnapshot(CATEGORY_BUCKET, objectPath, snapshot);
+                return res.status(404).json({ error: "That category no longer exists." });
+            }
 
             res.status(200).json({ success: true });
         } catch (error) {
             console.error("Delete Category Error:", error);
+            if (storagePrepared) {
+                try {
+                    await restoreStorageSnapshot(CATEGORY_BUCKET, objectPath, snapshot);
+                } catch (rollbackError) {
+                    console.error('CRITICAL Category Delete Rollback Error:', rollbackError);
+                }
+            }
             res.status(500).json({ error: "Failed to delete category." });
         }
     });

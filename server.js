@@ -22,12 +22,4 @@ if (typeof express !== 'function') {
 
 const app = createApp();
 
-// Vercel recommends an explicit final error handler so a failed invocation is
-// completed predictably and the function can be recycled safely.
-app.use((error, req, res, next) => {
-    if (res.headersSent) return next(error);
-    console.error(error);
-    return res.status(500).json({ error: 'Internal server error.' });
-});
-
 module.exports = app;

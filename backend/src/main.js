@@ -43,6 +43,8 @@ const { privatePathGuard } = require('./core/http/private-paths');
 const { mountStaticFiles } = require('./core/http/static-files');
 const { storefrontRedirect } = require('./core/http/storefront-link');
 const { apiNotFound } = require('./core/http/not-found');
+const { finalErrorHandler } = require('./core/http/errors');
+const { requestContext } = require('./core/security/audit-events');
 const { healthRouter } = require('./core/health/probes');
 
 // ---- modules: one bounded context each ------------------------------------
@@ -54,6 +56,7 @@ const { productsModule } = require('./modules/products/products.module');
 const { ordersModule } = require('./modules/orders/orders.module');
 const { customersModule } = require('./modules/customers/customers.module');
 const { authModule } = require('./modules/auth/auth.module');
+const { dashboardModule } = require('./modules/dashboard/dashboard.module');
 
 /**
  * Builds the application without starting it, so a test can hold an app it
@@ -67,6 +70,7 @@ function createApp() {
     applyAppSettings(app);
 
     // ---- request pipeline, in the order a request meets it -----------------
+    app.use(requestContext);
     app.use(corsMiddleware);
     app.use(csrfOriginGuard);
     app.use(securityHeaders);
@@ -97,10 +101,15 @@ function createApp() {
     app.use(productsModule());
     app.use(ordersModule());
     app.use(customersModule());
+    app.use(dashboardModule());
     app.use(authModule());
 
     // Registered after every module, so it only ever sees what nothing claimed.
     app.use('/api', apiNotFound);
+
+    // Last in every runtime so parser errors, rejected async handlers and any
+    // future middleware failure share one non-disclosing JSON response.
+    app.use(finalErrorHandler);
 
     return app;
 }

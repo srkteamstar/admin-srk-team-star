@@ -27,7 +27,7 @@ What changed is where it runs and what it can see:
 | Process | shared with the storefront | its own |
 | Origin | `/admin-dashboard.html` on the shop's hostname | its own hostname |
 | Session cookie | `srk_sid`, shared with shoppers | `srk_admin_sid`, admins only |
-| Routes in the process | 46, half of them public | 32, none of them public |
+| Routes in the process | 46, half of them public | 33, none of them public |
 | `core/` and `shared/` | one copy | copied, and now divergent |
 | Reaching the storefront | a function call away | a database away |
 
@@ -114,7 +114,7 @@ access: the console's API and browser connections remain same-origin.
 
 ## The modules
 
-Eight bounded contexts, each the administration half of one the storefront also
+Nine bounded contexts, each the administration half of one the storefront also
 has — except `customers`, which came across whole because an administrator's
 view of `user_profiles` was never anything but administration.
 
@@ -128,6 +128,7 @@ view of `user_profiles` was never anything but administration.
 | `products` | `products`, `product_images` | 4 |
 | `orders` | fulfilment status and tracking | 2 |
 | `customers` | accounts, suspension and deletion | 3 |
+| `dashboard` | bounded aggregate read model for the console home | 1 |
 
 There is **one cross-module edge**, and `tools/verify-boundaries.js` prints it
 on every run:
@@ -172,7 +173,7 @@ and it carries neither marker, so `frame-src 'none'` is simply true.
 ## Verification
 
 ```
-npm run verify           three structural checks, ~1s, no network, no database
+npm run verify           four structural checks, ~1s, no network, no database
 npm test                 66 API assertions against the real server.js
 npm run test:browser     4 Playwright checks on the one document
 npm run test:all         all of it

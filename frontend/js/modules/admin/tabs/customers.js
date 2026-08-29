@@ -92,6 +92,8 @@ const customerMoney = (value) => {
 };
 
 const ORDER_STATUS_BADGE_CLASSES = {
+    'Pending Payment': 'bg-amber-100 text-amber-700',
+    'Payment Review': 'bg-fuchsia-100 text-fuchsia-700',
     'Processing': 'bg-yellow-100 text-yellow-700',
     'Shipped': 'bg-blue-100 text-blue-700',
     'Delivered': 'bg-green-100 text-green-700',
@@ -121,7 +123,7 @@ let openCustomerMenuId = null;
 window.loadCustomers = async function() {
     window.customerLoadError = null;
     try {
-        const response = await window.adminAuth.fetch('/api/customers');
+        const response = await window.adminAuth.fetch('/api/customers?limit=250');
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
         const data = await response.json();

@@ -86,12 +86,9 @@ window.fetchCategories = async function() {
     const request = (url) => window.adminAuth.fetch(url, { cache: 'no-store' });
 
     try {
-        // Products come down alongside the categories because the Products column
-        // is counted here rather than read from the category row.
-        const [categoryRes, productRes] = await Promise.all([
-            request('/api/categories'),
-            request('/api/products')
-        ]);
+        // The API derives product counts in the database, so this tab does not
+        // need to download the product catalogue just to paint one column.
+        const categoryRes = await request('/api/categories?limit=250');
 
         const result = await categoryRes.json();
         if (!categoryRes.ok) throw new Error(result.error || "Failed to fetch categories");
@@ -99,10 +96,9 @@ window.fetchCategories = async function() {
         window.categoryData = Array.isArray(result) ? result : [];
         window.categoryLoadError = null;
 
-        // A failed product list is not fatal — the categories still render, every
-        // count just reads zero.
-        const products = productRes.ok ? await productRes.json() : [];
-        window.categoryProductCounts = window.countProductsPerCategory(products);
+        window.categoryProductCounts = Object.fromEntries(
+            window.categoryData.map(category => [String(category.id), Number(category.product_count) || 0])
+        );
     } catch (error) {
         console.error("Error fetching categories:", error);
         window.categoryData = [];
@@ -363,7 +359,7 @@ window.saveCategoryData = async function(id) {
     }
 
     try {
-        const response = await window.adminAuth.fetch('/api/categories', {
+        const response = await window.adminAuth.fetch('/api/categories?limit=250', {
             method: 'POST',
             body: formData
         });

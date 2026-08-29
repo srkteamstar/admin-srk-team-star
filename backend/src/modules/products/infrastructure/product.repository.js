@@ -32,16 +32,15 @@ const PRODUCT_BUCKET = 'product-images';
 async function countProductsByCategory() {
     const counts = new Map();
 
-    const { data, error } = await supabase.from('products').select('category_id');
+    const { data, error } = await supabase.rpc('admin_category_product_counts');
     if (error) {
         if (isMissingRelation(error) || isPermissionDenied(error)) return counts;
         throw error;
     }
 
-    (data || []).forEach(product => {
-        if (product.category_id === null || product.category_id === undefined) return;
-        const key = String(product.category_id);
-        counts.set(key, (counts.get(key) || 0) + 1);
+    (data || []).forEach(row => {
+        if (row.category_id === null || row.category_id === undefined) return;
+        counts.set(String(row.category_id), Number(row.product_count) || 0);
     });
 
     return counts;
@@ -57,21 +56,28 @@ async function countProductsByCategory() {
 // one query and carries the joined category name. Without it, fall back to the
 // bare table and resolve categories and images with two extra queries — still a
 // fixed cost, never per-product.
-async function fetchProductRows() {
-    const fromView = await supabase
+async function fetchProductRows(pagination) {
+    let viewQuery = supabase
         .from('products_with_image')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('name', { ascending: true });
+    if (pagination) viewQuery = viewQuery.range(pagination.from, pagination.to);
+    const fromView = await viewQuery;
 
-    if (!fromView.error) return fromView.data || [];
+    if (!fromView.error) return {
+        rows: fromView.data || [],
+        total: fromView.count === null || fromView.count === undefined ? (fromView.data || []).length : fromView.count
+    };
 
     // Only a missing view justifies the fallback — a real error must surface.
     if (!isMissingRelation(fromView.error)) throw fromView.error;
 
-    const fromTable = await supabase
+    let tableQuery = supabase
         .from('products')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('name', { ascending: true });
+    if (pagination) tableQuery = tableQuery.range(pagination.from, pagination.to);
+    const fromTable = await tableQuery;
 
     if (fromTable.error) throw fromTable.error;
 
@@ -107,11 +113,11 @@ async function fetchProductRows() {
         }
     }
 
-    return rows.map(product => ({
+    return { rows: rows.map(product => ({
         ...product,
         category_name: product.category_id ? (categoryNames.get(String(product.category_id)) || null) : null,
         images: imagesByProduct.get(String(product.id)) || []
-    }));
+    })), total: fromTable.count === null || fromTable.count === undefined ? rows.length : fromTable.count };
 }
 
 // Turns the raw `images` payload into public URLs, and lifts the main image to

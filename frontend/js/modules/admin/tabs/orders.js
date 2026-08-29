@@ -63,6 +63,7 @@ const formatOrderDate = (iso) => {
 // over, waiting on the customer.
 const ORDER_STATUS_CLASSES = {
     'Pending Payment': { badge: 'text-amber-700 border-amber-500 bg-amber-50/60', drawer: 'text-amber-800 border-amber-500 bg-amber-50', menu: 'text-amber-700 bg-amber-50/60' },
+    'Payment Review': { badge: 'text-fuchsia-700 border-fuchsia-500 bg-fuchsia-50/60', drawer: 'text-fuchsia-800 border-fuchsia-500 bg-fuchsia-50', menu: 'text-fuchsia-700 bg-fuchsia-50/60' },
     'Processing': { badge: 'text-yellow-600 border-yellow-500 bg-yellow-50/30', drawer: 'text-yellow-700 border-yellow-500 bg-yellow-50', menu: 'text-yellow-600 bg-yellow-50/50' },
     'Shipped': { badge: 'text-blue-600 border-blue-500 bg-blue-50/30', drawer: 'text-blue-700 border-blue-500 bg-blue-50', menu: 'text-blue-600 bg-blue-50/50' },
     'Delivered': { badge: 'text-green-600 border-green-500 bg-green-50/30', drawer: 'text-green-700 border-green-500 bg-green-50', menu: 'text-green-600 bg-green-50/50' },
@@ -85,8 +86,8 @@ const ORDER_STATUS_CLASSES = {
 const FULFILMENT_STATUSES = ['Processing', 'Shipped', 'Delivered', 'Cancelled'];
 
 window.orderStatusOptions = function(status) {
-    return status === 'Pending Payment'
-        ? ['Pending Payment'].concat(FULFILMENT_STATUSES)
+    return status === 'Pending Payment' || status === 'Payment Review'
+        ? [status].concat(FULFILMENT_STATUSES)
         : FULFILMENT_STATUSES;
 };
 
@@ -142,7 +143,7 @@ document.addEventListener('keydown', event => {
 window.loadOrders = async function() {
     window.orderLoadError = null;
     try {
-        const response = await window.adminAuth.fetch('/api/orders');
+        const response = await window.adminAuth.fetch('/api/orders?limit=250');
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
         const data = await response.json();
@@ -161,6 +162,13 @@ window.loadOrders = async function() {
                 name: escapeOrderText(row.customer.full_name || 'Unknown'),
                 email: escapeOrderText(row.customer.email || ''),
                 phone: row.customer.phone_number ? escapeOrderText(String(row.customer.phone_number)) : ''
+            } : null,
+            contact: row.contact ? {
+                name: escapeOrderText(row.contact.full_name || ''),
+                company: escapeOrderText(row.contact.company || ''),
+                email: escapeOrderText(row.contact.email || ''),
+                phone: row.contact.phone_number ? escapeOrderText(String(row.contact.phone_number)) : '',
+                isGuest: Boolean(row.contact.is_guest)
             } : null,
             items: (row.items || []).map(item => ({
                 id: item.id,
@@ -334,8 +342,8 @@ window.renderOrdersView = function() {
             <tr id="order-row-${o.id}" class="transition-all duration-500 cursor-pointer ${isActiveRow ? 'bg-[#d4af37]/5 border-l-2 border-l-[#d4af37]' : 'hover:bg-gray-50/50 border-l-2 border-l-transparent'} group" onclick="window.handleOrderAction('${o.id}')">
                 <td class="py-4 px-5 text-[#1f271b] group-hover:text-[#d4af37] font-bold transition-colors truncate">#${o.orderNumber}</td>
                 <td class="py-4 px-5 overflow-hidden">
-                    ${o.customer
-                        ? `<p class="text-[#12170f] font-bold truncate">${o.customer.name}</p><p class="text-[10px] text-[#1f271b]/60 truncate">${o.customer.email}</p>`
+                    ${o.contact
+                        ? `<p class="text-[#12170f] font-bold truncate">${o.contact.name || 'Unknown'}</p><p class="text-[10px] text-[#1f271b]/60 truncate">${o.contact.email}${o.contact.isGuest ? ' · Guest' : ''}</p>`
                         : `<p class="text-[#1f271b]/40 italic text-xs">Guest</p>`}
                 </td>
                 <td class="py-4 px-5 text-[#1f271b]/70 text-xs truncate">${o.createdAt}</td>
@@ -434,18 +442,25 @@ window.handleOrderAction = function(id) {
 
     const html = `
         <div class="border-b border-[#12170f]/10 pb-6 mb-6">
-            ${orderSectionHeading(ICON_USER, 'Customer')}
+            ${orderSectionHeading(ICON_USER, 'Customer contact')}
             <div class="grid grid-cols-[100px_1fr] gap-y-4 text-sm">
                 <div class="text-[#1f271b]/50 font-bold uppercase text-[10px] tracking-wider pt-0.5">Name</div>
-                <div class="text-[#12170f] font-bold text-base">${o.customer ? o.customer.name : '<span class="italic text-[#1f271b]/40">Guest</span>'}</div>
+                <div class="text-[#12170f] font-bold text-base">${o.contact && o.contact.name ? o.contact.name : '<span class="italic text-[#1f271b]/40">Not captured</span>'}</div>
 
-                ${o.customer && o.customer.email ? `
+                ${o.contact && o.contact.company ? `
+                <div class="text-[#1f271b]/50 font-bold uppercase text-[10px] tracking-wider pt-0.5">Company</div>
+                <div class="text-[#12170f] font-bold">${o.contact.company}</div>` : ''}
+
+                ${o.contact && o.contact.email ? `
                 <div class="text-[#1f271b]/50 font-bold uppercase text-[10px] tracking-wider pt-0.5">Email</div>
-                <div class="text-[#12170f] font-bold"><a href="mailto:${o.customer.email}" class="hover:text-[#d4af37] transition-colors">${o.customer.email}</a></div>` : ''}
+                <div class="text-[#12170f] font-bold"><a href="mailto:${o.contact.email}" class="hover:text-[#d4af37] transition-colors">${o.contact.email}</a></div>` : ''}
 
-                ${o.customer && o.customer.phone ? `
+                ${o.contact && o.contact.phone ? `
                 <div class="text-[#1f271b]/50 font-bold uppercase text-[10px] tracking-wider pt-0.5">Phone</div>
-                <div class="text-[#12170f] font-bold"><a href="tel:${o.customer.phone}" class="hover:text-[#d4af37] transition-colors">${o.customer.phone}</a></div>` : ''}
+                <div class="text-[#12170f] font-bold"><a href="tel:${o.contact.phone}" class="hover:text-[#d4af37] transition-colors">${o.contact.phone}</a></div>` : ''}
+
+                <div class="text-[#1f271b]/50 font-bold uppercase text-[10px] tracking-wider pt-0.5">Checkout</div>
+                <div class="text-[#1f271b]/80 font-bold text-xs">${o.contact && o.contact.isGuest ? 'Guest checkout' : 'Signed-in customer'}</div>
 
                 <div class="text-[#1f271b]/50 font-bold uppercase text-[10px] tracking-wider pt-0.5">Placed</div>
                 <div class="text-[#1f271b]/80 font-bold text-xs">${o.createdAt}</div>
@@ -473,6 +488,16 @@ window.handleOrderAction = function(id) {
                         <p class="text-xs font-bold text-amber-900 uppercase tracking-wider">Nobody has paid for this order</p>
                         <p class="text-xs text-amber-900/80 font-semibold mt-1 leading-relaxed">
                             It is being held for the customer to pay and must not be fulfilled yet. It moves to Processing on its own the moment payment clears &mdash; you do not need to do it by hand.
+                        </p>
+                    </div>
+                </div>` : ''}
+            ${o.status === 'Payment Review' ? `
+                <div class="mb-4 flex items-start gap-3 bg-fuchsia-50 border border-fuchsia-300 rounded-sm p-4">
+                    <svg class="w-5 h-5 shrink-0 mt-0.5 text-fuchsia-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path></svg>
+                    <div>
+                        <p class="text-xs font-bold text-fuchsia-900 uppercase tracking-wider">Captured payment needs review</p>
+                        <p class="text-xs text-fuchsia-900/80 font-semibold mt-1 leading-relaxed">
+                            Razorpay captured money after this order had been cancelled. Confirm the gateway transaction and decide whether to fulfil or refund before changing this status. This dashboard never issues a refund.
                         </p>
                     </div>
                 </div>` : ''}

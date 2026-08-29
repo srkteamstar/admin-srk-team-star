@@ -146,6 +146,7 @@
     function orderStatusBadge(status) {
         const styles = {
             'Pending Payment': 'bg-amber-50 text-amber-700 border-amber-200',
+            'Payment Review': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
             'Processing': 'bg-yellow-50 text-yellow-700 border-yellow-200',
             'Shipped': 'bg-blue-50 text-blue-700 border-blue-200',
             'Delivered': 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -179,28 +180,28 @@
 
     window.renderDashboard = async function () {
         const root = document.getElementById('main-content');
-        const requests = await Promise.allSettled([
-            get('/api/orders'), get('/api/products'), get('/api/customers'),
-            get('/api/enquiries'), get('/api/quote-requests'), get('/api/categories')
-        ]);
+        let summary = null;
+        try {
+            summary = await get('/api/dashboard/summary');
+        } catch (_) {
+            summary = null;
+        }
         if (!root || (window.app.currentTab && window.app.currentTab !== 'dashboard')) return;
 
-        const source = (index, key) => requests[index].status === 'fulfilled' ? rows(requests[index].value, key) : [];
-        const unavailable = requests.filter(item => item.status === 'rejected').length;
-        const orders = source(0, 'orders');
-        const products = source(1, 'products');
-        const customers = source(2, 'customers');
-        const enquiries = source(3, 'enquiries');
-        const quotes = source(4, 'quotations');
-        const categories = source(5, 'categories');
-        const shipped = orders.filter(order => order.status === 'Shipped');
-        const processing = orders.filter(order => order.status === 'Processing').length;
-        const pendingPayment = orders.filter(order => order.status === 'Pending Payment').length;
-        const delivered = orders.filter(order => order.status === 'Delivered').length;
-        const activeProducts = products.filter(product => product.is_active !== false).length;
-        const openEnquiries = enquiries.filter(item => item.status !== 'Resolved').length;
-        const openQuotes = quotes.filter(item => item.status !== 'Resolved').length;
-        const shippedRevenue = shipped.reduce((sum, order) => sum + (Number(order.net_amount) || 0), 0);
+        const unavailable = summary ? 0 : 1;
+        const orderSummary = summary && summary.orders ? summary.orders : {};
+        const orders = rows(orderSummary, 'recent');
+        const orderTotal = Number(orderSummary.total) || 0;
+        const shippedCount = Number(orderSummary.shipped) || 0;
+        const processing = Number(orderSummary.processing) || 0;
+        const pendingPayment = Number(orderSummary.pending_payment) || 0;
+        const delivered = Number(orderSummary.delivered) || 0;
+        const activeProducts = Number(summary && summary.active_products) || 0;
+        const categoryCount = Number(summary && summary.categories) || 0;
+        const customerCount = Number(summary && summary.customers) || 0;
+        const openEnquiries = Number(summary && summary.open_enquiries) || 0;
+        const openQuotes = Number(summary && summary.open_quotes) || 0;
+        const shippedRevenue = Number(orderSummary.shipped_revenue) || 0;
         const attentionTotal = processing + pendingPayment + openEnquiries + openQuotes;
 
         root.innerHTML = `
@@ -214,12 +215,12 @@
                         <div class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm"><span class="block text-[9px] uppercase tracking-[0.18em] font-bold" style="color:rgba(255,255,255,.5)">Needs attention</span><strong class="block text-xl md:text-2xl mt-2" style="color:#ffffff">${attentionTotal}</strong></div></div>
                     </div>
                 </section>
-                ${unavailable ? `<div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">${unavailable} summary ${unavailable === 1 ? 'source is' : 'sources are'} temporarily unavailable. Open the relevant section to retry.</div>` : ''}
+                ${unavailable ? `<div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The live summary is temporarily unavailable. Refresh this page to retry.</div>` : ''}
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-                    ${metricCard('Total orders', orders.length, `${processing + pendingPayment} currently in the fulfilment queue`, 'orders', 'Store', 'Orders', 'gold', 'orders')}
-                    ${metricCard('Shipped revenue', amount(shippedRevenue), `${shipped.length} ${shipped.length === 1 ? 'order' : 'orders'} marked as shipped`, 'orders', 'Store', 'Orders', 'green', 'revenue')}
-                    ${metricCard('Active products', activeProducts, `${categories.length} catalogue categories`, 'products', 'Store', 'Products', 'wine', 'products')}
-                    ${metricCard('Customers', customers.length, 'Profiles available to your operations team', 'customers', 'CRM', 'Customers', 'blue', 'customers')}
+                    ${metricCard('Total orders', orderTotal, `${processing + pendingPayment} currently in the fulfilment queue`, 'orders', 'Store', 'Orders', 'gold', 'orders')}
+                    ${metricCard('Shipped revenue', amount(shippedRevenue), `${shippedCount} ${shippedCount === 1 ? 'order' : 'orders'} marked as shipped`, 'orders', 'Store', 'Orders', 'green', 'revenue')}
+                    ${metricCard('Active products', activeProducts, `${categoryCount} catalogue categories`, 'products', 'Store', 'Products', 'wine', 'products')}
+                    ${metricCard('Customers', customerCount, 'Profiles available to your operations team', 'customers', 'CRM', 'Customers', 'blue', 'customers')}
                 </div>
                 <div class="grid xl:grid-cols-[1.45fr_0.85fr] gap-6 mb-6">
                     <section class="bg-white rounded-xl border border-[#12170f]/10 shadow-[0_10px_35px_rgba(18,23,15,0.04)] overflow-hidden"><div class="px-5 py-5 flex items-center justify-between gap-4"><div><p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Latest activity</p><h3 class="text-xl text-[#12170f] mt-1">Recent orders</h3></div><button type="button" onclick="window.app.switchTab('orders','Store','Orders')" class="text-xs font-bold text-[#420c14] hover:text-[#d4af37] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4af37] rounded-sm px-2 py-1">View all →</button></div>${recentOrdersHTML(orders)}</section>
@@ -227,7 +228,7 @@
                         ${attentionRow('Awaiting payment', pendingPayment, 'Do not fulfil until payment clears', 'orders', 'Store', 'Orders', 'amber')}${attentionRow('Being processed', processing, 'Orders waiting to ship', 'orders', 'Store', 'Orders', 'blue')}${attentionRow('Support enquiries', openEnquiries, 'Open or in progress', 'technical', 'Enquiries', 'Technical Support', 'wine')}${attentionRow('Quote requests', openQuotes, 'Open or in progress', 'quotations', 'Enquiries', 'Quotations', 'wine')}
                     </div></section>
                 </div>
-                <section class="grid md:grid-cols-[1fr_auto] gap-6 items-center bg-white rounded-xl border border-[#12170f]/10 shadow-[0_10px_35px_rgba(18,23,15,0.04)] p-5 md:p-6"><div><p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Fulfilment pulse</p><h3 class="text-xl text-[#12170f] mt-1 mb-5">Order distribution</h3><div class="grid sm:grid-cols-3 gap-5">${statusBar('Processing', processing, orders.length, 'amber')}${statusBar('Shipped', shipped.length, orders.length, 'blue')}${statusBar('Delivered', delivered, orders.length, 'green')}</div></div>
+                <section class="grid md:grid-cols-[1fr_auto] gap-6 items-center bg-white rounded-xl border border-[#12170f]/10 shadow-[0_10px_35px_rgba(18,23,15,0.04)] p-5 md:p-6"><div><p class="text-[10px] uppercase tracking-[0.18em] font-bold text-[#d4af37]">Fulfilment pulse</p><h3 class="text-xl text-[#12170f] mt-1 mb-5">Order distribution</h3><div class="grid sm:grid-cols-3 gap-5">${statusBar('Processing', processing, orderTotal, 'amber')}${statusBar('Shipped', shippedCount, orderTotal, 'blue')}${statusBar('Delivered', delivered, orderTotal, 'green')}</div></div>
                     <button type="button" onclick="window.app.switchTab('categories','Store','Categories')" class="w-full md:w-auto rounded-lg bg-[#420c14] px-5 py-3 text-sm font-bold hover:bg-[#5e1220] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#420c14]/40" style="color:#ffffff">Manage catalogue</button>
                 </section>
             </div>`;
