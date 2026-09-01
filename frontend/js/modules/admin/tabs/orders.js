@@ -335,8 +335,26 @@ window.handleOrderStatusSelect = function(id, newStatus, selectEl) {
 window.saveOrderTracking = function(id) {
     const input = document.getElementById(`order-drawer-tracking-${id}`);
     const select = document.getElementById(`order-drawer-status-${id}`);
+    const button = document.getElementById(`order-drawer-tracking-save-${id}`);
     if (!input || !select) return;
-    window.updateOrderStatus(id, select.value, input.value.trim());
+
+    // updateOrderStatus's own try/catch already surfaces a FAILURE via
+    // alert() — what was missing was any feedback on success. The input
+    // still shows exactly what the admin just typed either way, so a click
+    // that worked and a click that never registered at all looked
+    // identical. Disabling the button and relabelling it while the request
+    // is in flight is what makes a real click visibly different from one
+    // that didn't land.
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Saving…';
+    }
+
+    window.updateOrderStatus(id, select.value, input.value.trim()).finally(() => {
+        if (!button || !document.body.contains(button)) return;
+        button.disabled = false;
+        button.textContent = 'Save';
+    });
 };
 
 // The admin's own "we have this order" notice — see order-notifications.
@@ -631,8 +649,8 @@ window.handleOrderAction = function(id) {
         <div class="border-b border-[#12170f]/10 pb-6 mb-6">
             ${orderSectionHeading(ICON_TRUCK, 'Tracking')}
             <div class="flex gap-2">
-                <input autocomplete="srk-no-autofill" spellcheck="false" type="text" id="order-drawer-tracking-${o.id}" value="${o.tracking}" placeholder="Carrier tracking / AWB number" class="flex-1 bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
-                <button onclick="window.saveOrderTracking('${o.id}')" class="bg-[#12170f] text-white font-bold text-sm px-4 rounded-sm hover:bg-[#1f271b] transition-colors">Save</button>
+                <input autocomplete="srk-no-autofill" spellcheck="false" type="text" id="order-drawer-tracking-${o.id}" value="${o.tracking || ''}" placeholder="Carrier tracking / AWB number" class="flex-1 bg-[#f8fafc] border border-[#12170f]/10 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4af37]">
+                <button id="order-drawer-tracking-save-${o.id}" onclick="window.saveOrderTracking('${o.id}')" class="bg-[#12170f] text-white font-bold text-sm px-4 rounded-sm hover:bg-[#1f271b] transition-colors">Save</button>
             </div>
         </div>
 
