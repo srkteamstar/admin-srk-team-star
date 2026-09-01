@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
+const { errorTag } = require('../../../shared/error-tag');
 
 /** @returns {import('express').Router} */
 function adminDashboardController() {
@@ -14,7 +15,7 @@ function adminDashboardController() {
             if (error) throw error;
             res.status(200).json(data || {});
         } catch (error) {
-            console.error('Fetch Dashboard Summary Error:', error);
+            console.error('Fetch Dashboard Summary Error:', errorTag(error));
             res.status(503).json({ error: 'Dashboard summary is temporarily unavailable.' });
         }
     });

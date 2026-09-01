@@ -22,6 +22,7 @@
 const express = require('express');
 const { sessionScope, sessionProfile, isBlocked, BLOCKED_MESSAGE, roleNameById } = require('../../../core/security/guards');
 const { trimmed } = require('../../../shared/validation');
+const { errorTag } = require('../../../shared/error-tag');
 const { adminIdentity } = require('../services/profile-view.service');
 const { resolveIdentifier, startSession } = require('../services/session.service');
 const { passwordProblem, verifyAdminPassword, hashAdminPassword, needsPasswordRehash } = require('../services/admin-password.service');
@@ -110,7 +111,7 @@ function adminAuthController() {
             await startSession(req, profile.id, 'admin', profile.password_hash);
             res.status(200).json({ admin: adminIdentity(profile) });
         } catch (error) {
-            console.error("Admin Login Error:", error);
+            console.error("Admin Login Error:", errorTag(error));
             res.status(500).json({ error: "Could not sign you in." });
         }
     });
@@ -144,7 +145,7 @@ function adminAuthController() {
 
             res.status(200).json({ admin: adminIdentity(profile) });
         } catch (error) {
-            console.error("Admin Session Read Error:", error);
+            console.error("Admin Session Read Error:", errorTag(error));
             res.status(500).json({ error: "Could not read your session." });
         }
     });
@@ -162,7 +163,7 @@ function adminAuthController() {
 
         req.session.destroy((err) => {
             if (err) {
-                console.error("Session Destroy Error:", err);
+                console.error("Session Destroy Error:", errorTag(err));
                 return res.status(500).json({ error: "Failed to sign out." });
             }
             res.clearCookie('srk_admin_sid');

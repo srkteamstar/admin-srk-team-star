@@ -10,6 +10,7 @@ const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
 const { trimmed, isPositiveId } = require('../../../shared/validation');
+const { errorTag } = require('../../../shared/error-tag');
 const { QUOTE_STATUSES } = require('../domain/quote-status');
 const { quoteReference } = require('../domain/quote-reference');
 const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
@@ -47,7 +48,7 @@ function adminQuotesController() {
             setPaginationHeaders(res, pagination, count);
             res.status(200).json(rows);
         } catch (error) {
-            console.error("Fetch Error (Quotes):", error);
+            console.error("Fetch Error (Quotes):", errorTag(error));
             res.status(500).json({ error: "Failed to fetch quote requests." });
         }
     });
@@ -74,7 +75,7 @@ function adminQuotesController() {
             if (!data) return res.status(404).json({ error: "That quote request no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Update Error (Quotes):", error);
+            console.error("Update Error (Quotes):", errorTag(error));
             res.status(500).json({ error: "Failed to update quote status." });
         }
     });
@@ -89,7 +90,7 @@ function adminQuotesController() {
             if (!data) return res.status(404).json({ error: "That quote request no longer exists." });
             res.status(200).json({ success: true });
         } catch (error) {
-            console.error("Delete Error (Quotes):", error);
+            console.error("Delete Error (Quotes):", errorTag(error));
             res.status(500).json({ error: "Failed to delete quote request." });
         }
     });

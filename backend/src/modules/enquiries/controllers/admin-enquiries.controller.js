@@ -9,6 +9,7 @@ const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
 const { trimmed, isPositiveId } = require('../../../shared/validation');
+const { errorTag } = require('../../../shared/error-tag');
 const { ENQUIRY_STATUSES } = require('../domain/enquiry-status');
 const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
 
@@ -33,7 +34,7 @@ function adminEnquiriesController() {
             setPaginationHeaders(res, pagination, count);
             res.status(200).json(data || []);
         } catch (error) {
-            console.error("Fetch Error:", error);
+            console.error("Fetch Error:", errorTag(error));
             res.status(500).json({ error: "Failed to fetch enquiries." });
         }
     });
@@ -65,7 +66,7 @@ function adminEnquiriesController() {
             if (!data) return res.status(404).json({ error: "That enquiry no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Update Error:", error);
+            console.error("Update Error:", errorTag(error));
             res.status(500).json({ error: "Failed to update status." });
         }
     });
@@ -79,7 +80,7 @@ function adminEnquiriesController() {
             if (!data) return res.status(404).json({ error: "That enquiry no longer exists." });
             res.status(200).json({ success: true });
         } catch (error) {
-            console.error("Delete Error:", error);
+            console.error("Delete Error:", errorTag(error));
             res.status(500).json({ error: "Failed to delete ticket." });
         }
     });

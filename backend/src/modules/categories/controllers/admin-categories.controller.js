@@ -12,6 +12,7 @@ const { requireAdmin } = require('../../../core/security/guards');
 const { upload, normalizeImage, ImageValidationError } = require('../../../core/uploads/image-upload');
 const { readStorageSnapshot, restoreStorageSnapshot, removeStorageObject } = require('../../../core/uploads/storage-snapshots');
 const { slugify } = require('../../../shared/text');
+const { errorTag } = require('../../../shared/error-tag');
 const { CATEGORY_BUCKET, fetchCategoryRows, withImageUrl } = require('../infrastructure/category.repository');
 const { isPositiveId, boundedText } = require('../../../shared/validation');
 const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
@@ -54,7 +55,7 @@ function adminCategoriesController() {
             setPaginationHeaders(res, pagination, total);
             res.status(200).json(rows.map(withImageUrl));
         } catch (error) {
-            console.error("Fetch Categories Error:", error);
+            console.error("Fetch Categories Error:", errorTag(error));
             res.status(500).json({ error: "Failed to fetch categories." });
         }
     });
@@ -88,7 +89,7 @@ function adminCategoriesController() {
             if (!data) return res.status(404).json({ error: "That category no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Category Status Error:", error);
+            console.error("Category Status Error:", errorTag(error));
             res.status(500).json({ error: "Failed to update category status." });
         }
     });
@@ -219,7 +220,7 @@ function adminCategoriesController() {
 
             res.status(200).json({ success: true, id: categoryId });
         } catch (error) {
-            console.error("Category Save Error:", error);
+            console.error("Category Save Error:", errorTag(error));
 
             if (committed) {
                 try {
@@ -235,7 +236,7 @@ function adminCategoriesController() {
                         if (rollbackError) throw rollbackError;
                     }
                 } catch (rollbackError) {
-                    console.error('CRITICAL Category Save Rollback Error:', rollbackError);
+                    console.error('CRITICAL Category Save Rollback Error:', errorTag(rollbackError));
                 }
             }
 
@@ -278,12 +279,12 @@ function adminCategoriesController() {
 
             res.status(200).json({ success: true });
         } catch (error) {
-            console.error("Delete Category Error:", error);
+            console.error("Delete Category Error:", errorTag(error));
             if (storagePrepared) {
                 try {
                     await restoreStorageSnapshot(CATEGORY_BUCKET, objectPath, snapshot);
                 } catch (rollbackError) {
-                    console.error('CRITICAL Category Delete Rollback Error:', rollbackError);
+                    console.error('CRITICAL Category Delete Rollback Error:', errorTag(rollbackError));
                 }
             }
             res.status(500).json({ error: "Failed to delete category." });

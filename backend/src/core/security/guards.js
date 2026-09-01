@@ -18,6 +18,7 @@
  */
 const { supabase } = require('../database/supabase');
 const { sessionCredentialMatches } = require('./session-credentials');
+const { errorTag } = require('../../shared/error-tag');
 
 // AUTHORIZATION
 //
@@ -153,7 +154,7 @@ async function requireAdmin(req, res, next) {
         req.profile = profile;
         next();
     } catch (error) {
-        console.error("Admin check failed:", error);
+        console.error("Admin check failed:", errorTag(error));
         res.status(500).json({ error: "Could not verify your session." });
     }
 }

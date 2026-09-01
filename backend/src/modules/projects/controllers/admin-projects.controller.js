@@ -17,6 +17,7 @@ const { upload, normalizeImage, ImageValidationError } = require('../../../core/
 const { readStorageSnapshot, restoreStorageSnapshot, removeStorageObject } = require('../../../core/uploads/storage-snapshots');
 const { SECTION_VISIBILITY_KEY, isSectionVisible } = require('../services/project-visibility.service');
 const { isPositiveId, boundedText } = require('../../../shared/validation');
+const { errorTag } = require('../../../shared/error-tag');
 const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
 
 /** @returns {import('express').Router} */
@@ -51,7 +52,7 @@ function adminProjectsController() {
             setPaginationHeaders(res, pagination, count);
             res.status(200).json(enrichedData);
         } catch (error) {
-            console.error("Fetch Projects Error:", error);
+            console.error("Fetch Projects Error:", errorTag(error));
             res.status(500).json({ error: "Failed to fetch projects." });
         }
     });
@@ -77,7 +78,7 @@ function adminProjectsController() {
             if (!data) return res.status(404).json({ error: "That project no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Project Visibility Error:", error);
+            console.error("Project Visibility Error:", errorTag(error));
             res.status(500).json({ error: "Failed to update project visibility." });
         }
     });
@@ -88,7 +89,7 @@ function adminProjectsController() {
         try {
             res.status(200).json({ section_visible: await isSectionVisible() });
         } catch (error) {
-            console.error("Section Visibility Read Error:", error);
+            console.error("Section Visibility Read Error:", errorTag(error));
             res.status(503).json({ error: "Could not read section visibility." });
         }
     });
@@ -106,7 +107,7 @@ function adminProjectsController() {
             if (error) throw error;
             res.status(200).json({ success: true, section_visible: req.body.section_visible });
         } catch (error) {
-            console.error("Section Visibility Error:", error);
+            console.error("Section Visibility Error:", errorTag(error));
             res.status(500).json({ error: "Failed to update section visibility." });
         }
     });
@@ -215,7 +216,7 @@ function adminProjectsController() {
 
             res.status(200).json({ success: true, id: projectId });
         } catch (error) {
-            console.error("Project Save Error:", error);
+            console.error("Project Save Error:", errorTag(error));
             if (committed) {
                 try {
                     if (storageSnapshotReady) {
@@ -230,7 +231,7 @@ function adminProjectsController() {
                         if (rollbackError) throw rollbackError;
                     }
                 } catch (rollbackError) {
-                    console.error('CRITICAL Project Save Rollback Error:', rollbackError);
+                    console.error('CRITICAL Project Save Rollback Error:', errorTag(rollbackError));
                 }
             }
             res.status(500).json({ error: "Failed to save project or image." });
@@ -268,12 +269,12 @@ function adminProjectsController() {
 
             res.status(200).json({ success: true });
         } catch (error) {
-            console.error("Delete Project Error:", error);
+            console.error("Delete Project Error:", errorTag(error));
             if (storagePrepared) {
                 try {
                     await restoreStorageSnapshot('project-images', objectPath, snapshot);
                 } catch (rollbackError) {
-                    console.error('CRITICAL Project Delete Rollback Error:', rollbackError);
+                    console.error('CRITICAL Project Delete Rollback Error:', errorTag(rollbackError));
                 }
             }
             res.status(500).json({ error: "Failed to delete project." });

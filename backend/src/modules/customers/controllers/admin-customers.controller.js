@@ -18,6 +18,7 @@
 const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin, roleNameById } = require('../../../core/security/guards');
+const { errorTag } = require('../../../shared/error-tag');
 const { customerWriteRefusal } = require('../services/customer-write-refusal.service');
 const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
 
@@ -162,7 +163,7 @@ function adminCustomersController() {
             setPaginationHeaders(res, pagination, count);
             res.status(200).json(rows);
         } catch (error) {
-            console.error("Fetch Customers Error:", error);
+            console.error("Fetch Customers Error:", errorTag(error));
             res.status(500).json({ error: "Failed to fetch customers." });
         }
     });
@@ -213,7 +214,7 @@ function adminCustomersController() {
                 blocked_at: data.blocked_at || null
             });
         } catch (error) {
-            console.error("Block Customer Error:", error);
+            console.error("Block Customer Error:", errorTag(error));
             res.status(500).json({ error: "Could not change that account's status." });
         }
     });
@@ -259,7 +260,7 @@ function adminCustomersController() {
 
             res.status(200).json({ success: true, id: req.params.id });
         } catch (error) {
-            console.error("Delete Customer Error:", error);
+            console.error("Delete Customer Error:", errorTag(error));
 
             // 23503 is a foreign key violation: some table this route does not
             // know about still points at the row. Say that rather than "failed",

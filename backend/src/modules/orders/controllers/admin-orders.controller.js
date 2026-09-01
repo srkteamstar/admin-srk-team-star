@@ -29,6 +29,7 @@ const express = require('express');
 const { supabase } = require('../../../core/database/supabase');
 const { requireAdmin } = require('../../../core/security/guards');
 const { trimmed, isPositiveId, boundedText } = require('../../../shared/validation');
+const { errorTag } = require('../../../shared/error-tag');
 const { ORDER_STATUSES } = require('../../../shared/contracts/order-status');
 const { fetchOrderRows } = require('../infrastructure/order.repository');
 const { paginationFor, setPaginationHeaders } = require('../../../core/http/pagination');
@@ -50,7 +51,7 @@ function adminOrdersController() {
             setPaginationHeaders(res, pagination, total);
             res.status(200).json(rows);
         } catch (error) {
-            console.error("Fetch Orders Error:", error);
+            console.error("Fetch Orders Error:", errorTag(error));
             res.status(500).json({ error: "Failed to fetch orders." });
         }
     });
@@ -109,12 +110,12 @@ function adminOrdersController() {
                 if (trackingChanged) await notifyOrderShipped(data);
                 if (enteringCancelled) await notifyOrderCancelled(data, updateData.cancellation_reason);
             } catch (notifyError) {
-                console.error("Order notification failed:", notifyError);
+                console.error("Order notification failed:", errorTag(notifyError));
             }
 
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Update Order Error:", error);
+            console.error("Update Order Error:", errorTag(error));
             res.status(500).json({ error: "Failed to update order." });
         }
     });
@@ -153,12 +154,12 @@ function adminOrdersController() {
             try {
                 await notifyOrderConfirmed(data);
             } catch (notifyError) {
-                console.error("Order confirmation notification failed:", notifyError);
+                console.error("Order confirmation notification failed:", errorTag(notifyError));
             }
 
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Confirm Order Error:", error);
+            console.error("Confirm Order Error:", errorTag(error));
             res.status(500).json({ error: "Failed to confirm order." });
         }
     });
@@ -207,12 +208,12 @@ function adminOrdersController() {
             try {
                 await notifyRefundCompleted(data, payment);
             } catch (notifyError) {
-                console.error("Refund notification failed:", notifyError);
+                console.error("Refund notification failed:", errorTag(notifyError));
             }
 
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Mark Refund Complete Error:", error);
+            console.error("Mark Refund Complete Error:", errorTag(error));
             res.status(500).json({ error: "Failed to record refund." });
         }
     });

@@ -14,6 +14,7 @@ const { requireAdmin } = require('../../../core/security/guards');
 const { upload, normalizeImage, ImageValidationError } = require('../../../core/uploads/image-upload');
 const { readStorageSnapshot, restoreStorageSnapshot } = require('../../../core/uploads/storage-snapshots');
 const { slugify } = require('../../../shared/text');
+const { errorTag } = require('../../../shared/error-tag');
 const { isMissingRelation, isMissingColumn, isPermissionDenied } = require('../../../core/database/postgrest-errors');
 const { PRODUCT_BUCKET, fetchProductRows, withProductImages } = require('../infrastructure/product.repository');
 const { PRODUCT_MAX_IMAGES, PRODUCT_IMAGE_SLOTS } = require('../domain/product-images');
@@ -37,7 +38,7 @@ function adminProductsController() {
             setPaginationHeaders(res, pagination, total);
             res.status(200).json(rows.map(withProductImages));
         } catch (error) {
-            console.error("Fetch Products Error:", error);
+            console.error("Fetch Products Error:", errorTag(error));
             sendProductError(res, error, "Failed to fetch products.");
         }
     });
@@ -65,7 +66,7 @@ function adminProductsController() {
             if (!data) return res.status(404).json({ error: "That product no longer exists." });
             res.status(200).json({ success: true, data });
         } catch (error) {
-            console.error("Product Status Error:", error);
+            console.error("Product Status Error:", errorTag(error));
             sendProductError(res, error, "Failed to update product status.");
         }
     });
@@ -312,7 +313,7 @@ function adminProductsController() {
 
             res.status(200).json({ success: true, id: productId });
         } catch (error) {
-            console.error("Product Save Error:", error);
+            console.error("Product Save Error:", errorTag(error));
 
             if (committed) {
                 const rollbackFailures = [];
@@ -349,7 +350,7 @@ function adminProductsController() {
                     rollbackFailures.push(rollbackError);
                 }
                 if (rollbackFailures.length) {
-                    console.error('CRITICAL Product Save Rollback Error:', rollbackFailures);
+                    console.error('CRITICAL Product Save Rollback Error:', errorTag(rollbackFailures));
                 }
             }
 
@@ -418,7 +419,7 @@ function adminProductsController() {
 
             res.status(200).json({ success: true });
         } catch (error) {
-            console.error("Delete Product Error:", error);
+            console.error("Delete Product Error:", errorTag(error));
             if (storageRemoved) {
                 const failures = [];
                 for (const [path, snapshot] of storageSnapshots) {
@@ -428,7 +429,7 @@ function adminProductsController() {
                         failures.push(rollbackError);
                     }
                 }
-                if (failures.length) console.error('CRITICAL Product Delete Rollback Error:', failures);
+                if (failures.length) console.error('CRITICAL Product Delete Rollback Error:', errorTag(failures));
             }
             sendProductError(res, error, "Failed to delete product.");
         }

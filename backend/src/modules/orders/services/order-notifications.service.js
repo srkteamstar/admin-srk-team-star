@@ -35,6 +35,7 @@ const { supabase } = require('../../../core/database/supabase');
 const { sendWhatsAppTemplate } = require('../../../core/notifications/whatsapp-client');
 const { sendEmail } = require('../../../core/notifications/email-client');
 const { escapeHtmlText } = require('../../../shared/text');
+const { errorTag } = require('../../../shared/error-tag');
 
 // INDIA-ONLY NORMALIZATION, DELIBERATELY NARROW, AND NOT OPTIONAL.
 //
@@ -101,7 +102,7 @@ async function logNotification({ orderId, event, channel, recipient, status, err
     } catch (logError) {
         // The log is diagnostic, not load-bearing. Losing a log row must never
         // be the reason an order update fails.
-        console.error('Failed to record order notification:', logError);
+        console.error('Failed to record order notification:', errorTag(logError));
     }
 }
 
@@ -124,7 +125,7 @@ async function sendCustomerNotification({ order, event, whatsapp, email }) {
             // Skipped (not configured) falls through to email silently; that
             // is the expected state of every environment before setup.
         } catch (error) {
-            console.error(`WhatsApp send failed for order ${orderId} (${event}):`, error);
+            console.error(`WhatsApp send failed for order ${orderId} (${event}):`, errorTag(error));
             await logNotification({ orderId, event, channel: 'whatsapp', recipient: phone, status: 'failed', error });
         }
     }
@@ -138,7 +139,7 @@ async function sendCustomerNotification({ order, event, whatsapp, email }) {
             }
             await logNotification({ orderId, event, channel: 'email', recipient: emailAddress, status: 'skipped', error: result.reason });
         } catch (error) {
-            console.error(`Email send failed for order ${orderId} (${event}):`, error);
+            console.error(`Email send failed for order ${orderId} (${event}):`, errorTag(error));
             await logNotification({ orderId, event, channel: 'email', recipient: emailAddress, status: 'failed', error });
         }
         return;
