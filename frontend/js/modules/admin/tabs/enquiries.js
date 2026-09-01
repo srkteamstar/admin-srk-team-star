@@ -69,7 +69,7 @@ async function pollEnquiries() {
     // in the log and load on the database.
     if (!window.app || window.app.currentTab !== 'technical') return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    if (!window.adminAuth) return;
+    if (!window.adminAuth || !window.adminAuth.isAuthenticated) return;
 
     try {
         const before = lastEnquirySignature === null ? enquirySignature() : lastEnquirySignature;

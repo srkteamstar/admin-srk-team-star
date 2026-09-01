@@ -133,6 +133,45 @@ pieces (`'bg-' + colour`) will not survive the build.
 
 ## Deploying
 
+### Loading and performance checks
+
+The sign-in form and its critical styles are in the HTML. Only the deferred
+authentication script and asset loader run before sign-in; a slow session
+request does not delay the form. The dashboard stylesheet, navigation and
+shared helpers load after authentication, and each section's script loads on
+first use. The inert asset templates in `frontend/pages/index.html` retain the
+load order and let `verify-links` check every path. Keep explicit dependencies:
+the section UI helpers belong to `dashboard.js`, and the product editor also
+uses the category module's toggle controls.
+
+`npm run build` creates the Vercel `public/` tree and minifies only its copied
+JavaScript and CSS. Authored files remain readable and classic `window.*`
+interfaces stay intact. Unversioned assets still revalidate so a deployment
+cannot leave the browser running stale code against a new API.
+
+```bash
+npm run test:all             # structural, API, build, authored and built browser checks
+npm run test:browser:built   # rebuild and test the exact generated JS/CSS with fake data
+node tools/optimize-admin-images.js  # regenerate small, lossless logo and favicon variants
+```
+
+The normal Node server deliberately serves authored files; the built-assets
+browser harness serves generated files with the same real API and fake test
+database. Lighthouse on a plain local Node server can still flag missing text
+compression: [Vercel applies compression at its CDN](https://vercel.com/docs/how-vercel-cdn-works).
+Confirm compression and rerun PageSpeed on the live hostname after deployment;
+local scores do not measure the production network, cold starts or database.
+
+The description is present, but the SEO score remains limited by this private
+console's intentional `noindex` directive. Do not remove it or the whole-origin
+robots exclusion to obtain a public-site SEO score. Both are crawler guidance,
+not access controls. [Google must be able to crawl a response to read its
+`noindex` rule](https://developers.google.com/search/docs/crawling-indexing/block-indexing);
+if an admin URL is already indexed, review removal through Search Console and
+the deployment's crawl policy separately.
+
+### Deployment boundary
+
 The console is meant to be deployed **separately from the storefront**, on its
 own hostname. Nothing about it should be reachable from the public site.
 

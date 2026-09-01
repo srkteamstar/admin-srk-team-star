@@ -9,6 +9,8 @@
  *
  *   GET   /api/orders              admin
  *   PATCH /api/orders/:id/status   admin
+ *   PATCH /api/orders/:id/confirm  admin
+ *   PATCH /api/orders/:id/refund   admin
  *   GET   /api/orders/mine         customer
  *   POST  /api/orders/:id/cancel   customer
  *

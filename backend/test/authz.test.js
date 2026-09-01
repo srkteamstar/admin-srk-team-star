@@ -318,6 +318,35 @@ async function reqForm(cookies, path, form) {
     r = await req(admin, 'PATCH', '/api/orders/900/status', { status: 'Processing', tracking: 'x'.repeat(201) });
     check('order update rejects an oversized tracking reference', r.status === 400, JSON.stringify(r));
 
+    // Order 900 is reused all over this suite and is walked back to where it
+    // started (section 6); order 901 is not referenced anywhere else, so it is
+    // the one this block permanently cancels.
+    r = await req(admin, 'PATCH', '/api/orders/901/status', { status: 'Cancelled' });
+    check('cancelling an order without a reason is refused', r.status === 400, JSON.stringify(r));
+
+    r = await req(admin, 'PATCH', '/api/orders/901/status',
+        { status: 'Cancelled', cancellationReason: 'Customer requested cancellation by phone.' });
+    check('cancelling an order with a reason succeeds',
+        r.status === 200 && r.body.data && r.body.data.status === 'Cancelled', JSON.stringify(r).slice(0, 160));
+
+    r = await req(admin, 'PATCH', '/api/orders/901/status', { status: 'Cancelled', tracking: 'TRK-B' });
+    check('an order already Cancelled can be re-saved without a fresh reason', r.status === 200, JSON.stringify(r).slice(0, 160));
+
+    r = await req(admin, 'PATCH', '/api/orders/900/refund', {});
+    check('refund cannot be recorded on an order that was never cancelled',
+        r.status === 400 && /cancelled/i.test(r.body.error || ''), JSON.stringify(r));
+
+    r = await req(admin, 'PATCH', '/api/orders/901/refund', {});
+    check('refund cannot be recorded without a captured payment',
+        r.status === 400 && /captured payment/i.test(r.body.error || ''), JSON.stringify(r));
+
+    r = await req(admin, 'PATCH', '/api/orders/900/confirm', {});
+    check('admin can confirm an order', r.status === 200 && r.body.data && !!r.body.data.confirmed_at, JSON.stringify(r).slice(0, 160));
+
+    r = await req(admin, 'PATCH', '/api/orders/900/confirm', {});
+    check('confirming an already-confirmed order is a no-op, not a second notification',
+        r.status === 200 && r.body.alreadyConfirmed === true, JSON.stringify(r).slice(0, 160));
+
     r = await req(admin, 'DELETE', '/api/enquiries/999999');
     check('deleting a missing record returns 404 instead of false success', r.status === 404, JSON.stringify(r));
 

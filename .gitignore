@@ -30,3 +30,6 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+
+# Local verification scratch: Lighthouse runs and their throwaway toolchain.
+/artifacts/

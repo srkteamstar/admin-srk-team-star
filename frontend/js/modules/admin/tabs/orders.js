@@ -9,21 +9,33 @@
  * `payments` (the most recent payment row, if any).
  *
  * `status` / `tracking` are real columns (backend/migrations/010_orders_
- * status_tracking.sql) — the only two fields on an order this tab can
- * actually change. Everything else here is a financial record: no create,
- * no delete. `status` is fulfillment (Processing/Shipped/Delivered/
- * Cancelled), deliberately separate from `payment.status` (whether money
- * moved) — an order can be Paid and still sit in Processing for days.
+ * status_tracking.sql). `status` is fulfillment (Processing/Shipped/
+ * Delivered/Cancelled), deliberately separate from `payment.status` (whether
+ * money moved) — an order can be Paid and still sit in Processing for days.
+ * Everything else here is a financial record: no create, no delete.
+ *
+ * Migration 008 added three more admin-facing facts, each its own explicit
+ * action rather than folded into the status select: `confirmed_at` (Confirm
+ * order button, once only), `cancellation_reason` (prompted for the moment
+ * status becomes Cancelled, not stored any other way) and
+ * `refund_completed_at` (Mark refund completed, shown only once the
+ * "Cancelled, but paid for" banner already is). All three exist to drive
+ * backend/src/modules/orders/services/order-notifications.service.js —
+ * WhatsApp-first, email-fallback customer notifications — so every one of
+ * these buttons sends something the moment it succeeds.
  *
  * CONVENTIONS
  * -----------
  * Same shape as quotations.js: a `window.orderData` array, `window.
  * loadOrders()` / `window.renderOrders()` / `window.renderOrdersView()`
- * split, smooth DOM updaters instead of a full re-render on status change,
- * sticky table head, per-row click menu for the status actions that
- * genuinely exist. Error display uses products.js's `window.orderLoadError`
- * + inline retry-row-in-table instead of quotations.js's whole-container
- * swap.
+ * split, smooth DOM updaters instead of a full re-render on an ordinary
+ * status change, sticky table head, per-row click menu for the status
+ * actions that genuinely exist. Cancelling and the two one-shot buttons above
+ * are the deliberate exception: they rebuild the open drawer in full (see
+ * `window.handleOrderAction`) because what they change is exactly what a
+ * light DOM patch does not reach. Error display uses products.js's `window.
+ * orderLoadError` + inline retry-row-in-table instead of quotations.js's
+ * whole-container swap.
  *
  * LOAD ORDER
  * ----------
@@ -153,6 +165,9 @@ window.loadOrders = async function() {
             orderNumber: row.order_number,
             status: row.status || 'Processing',
             tracking: row.tracking ? escapeOrderText(row.tracking) : '',
+            confirmedAt: row.confirmed_at || null,
+            cancellationReason: row.cancellation_reason ? escapeOrderText(row.cancellation_reason) : '',
+            refundCompletedAt: row.refund_completed_at || null,
             amount: row.amount,
             taxAmount: row.tax_amount,
             netAmount: row.net_amount,
@@ -252,10 +267,17 @@ window.updateOrderRowBadgeDOM = function(id, status) {
 // doesn't have a value to set, so a row-menu "Mark as Delivered" click never
 // clobbers a tracking number entered on an earlier Shipped update. Sending
 // '' (from the drawer's clear-tracking case) is a deliberate write.
-window.updateOrderStatus = async function(id, newStatus, tracking) {
+//
+// cancellationReason is only ever sent alongside newStatus === 'Cancelled',
+// and only the FIRST time an order is cancelled needs one at all — the
+// backend only demands it the moment status actually becomes Cancelled (see
+// admin-orders.controller.js), so re-saving tracking on an order that is
+// already Cancelled never re-prompts for one.
+window.updateOrderStatus = async function(id, newStatus, tracking, cancellationReason) {
     try {
         const body = { status: newStatus };
         if (tracking !== undefined) body.tracking = tracking;
+        if (newStatus === 'Cancelled' && cancellationReason) body.cancellationReason = cancellationReason;
 
         const response = await window.adminAuth.fetch(`/api/orders/${id}/status`, {
             method: 'PATCH',
@@ -269,14 +291,45 @@ window.updateOrderStatus = async function(id, newStatus, tracking) {
         if (order) {
             order.status = newStatus;
             if (tracking !== undefined) order.tracking = escapeOrderText(tracking);
+            if (newStatus === 'Cancelled' && cancellationReason) order.cancellationReason = escapeOrderText(cancellationReason);
         }
 
         window.updateOrderRowBadgeDOM(id, newStatus);
         window.refreshOrderStatsDOM();
+
+        // A Cancelled transition changes what the drawer itself shows (the
+        // reason on file, whether a refund can now be recorded) beyond what
+        // the badge/select patch above touches, so — only for this one
+        // transition — the open drawer is fully rebuilt rather than patched.
+        if (newStatus === 'Cancelled' && window.app && window.app.activeItemId == id) {
+            window.handleOrderAction(id);
+        }
     } catch (error) {
         console.error('Failed to update order:', error);
         alert('Failed to update order. Please try again.');
     }
+};
+
+// Selecting 'Cancelled' — from the drawer's status select or a row's quick
+// menu — must not reach the API until an admin has given a reason the
+// customer will be told. Every OTHER destination goes straight through, same
+// as before this existed.
+window.handleOrderStatusSelect = function(id, newStatus, selectEl) {
+    if (newStatus !== 'Cancelled') {
+        window.updateOrderStatus(id, newStatus);
+        return;
+    }
+
+    const reason = window.prompt('Reason for cancelling this order (the customer will see this):', '');
+    if (reason === null || !reason.trim()) {
+        if (selectEl) {
+            const current = window.findOrder(id);
+            if (current) selectEl.value = current.status;
+        }
+        return;
+    }
+
+    window.updateOrderStatus(id, newStatus, undefined, reason.trim());
 };
 
 window.saveOrderTracking = function(id) {
@@ -284,6 +337,48 @@ window.saveOrderTracking = function(id) {
     const select = document.getElementById(`order-drawer-status-${id}`);
     if (!input || !select) return;
     window.updateOrderStatus(id, select.value, input.value.trim());
+};
+
+// The admin's own "we have this order" notice — see order-notifications.
+// service.js for why this is a deliberate button rather than tied to a
+// status change. Idempotent: a second click reports alreadyConfirmed rather
+// than sending a second notification.
+window.confirmOrder = async function(id) {
+    try {
+        const response = await window.adminAuth.fetch(`/api/orders/${id}/confirm`, { method: 'PATCH' });
+        if (!response.ok) throw new Error('Confirm failed');
+        const body = await response.json();
+
+        const order = window.findOrder(id);
+        if (order && body.data) order.confirmedAt = body.data.confirmed_at;
+
+        if (window.app && window.app.activeItemId == id) window.handleOrderAction(id);
+    } catch (error) {
+        console.error('Failed to confirm order:', error);
+        alert('Failed to confirm order. Please try again.');
+    }
+};
+
+// Records a refund an admin already completed BY HAND in Razorpay — see the
+// "Cancelled, but paid for" banner below and admin-orders.controller.js. This
+// button only appears once that banner does, so the confirm() text can
+// safely assume a real refund exists to talk about.
+window.markOrderRefunded = async function(id) {
+    if (!confirm('Mark this order as refunded? This tells the customer the refund is done and cannot be undone.')) return;
+
+    try {
+        const response = await window.adminAuth.fetch(`/api/orders/${id}/refund`, { method: 'PATCH' });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || 'Refund update failed');
+
+        const order = window.findOrder(id);
+        if (order && body.data) order.refundCompletedAt = body.data.refund_completed_at;
+
+        if (window.app && window.app.activeItemId == id) window.handleOrderAction(id);
+    } catch (error) {
+        console.error('Failed to mark refund complete:', error);
+        alert(error.message || 'Failed to mark refund complete. Please try again.');
+    }
 };
 
 // ==========================================
@@ -336,7 +431,7 @@ window.renderOrdersView = function() {
             const isActiveRow = window.app && window.app.activeItemId == o.id;
 
             const menuItems = window.orderStatusOptions(o.status).map(s => `
-                <button role="menuitem" id="order-menu-${s.toLowerCase().replace(/ /g, '-')}-${o.id}" onclick="event.stopPropagation(); window.closeOrderActionsMenu(); updateOrderStatus('${o.id}', '${s}')" class="block w-full px-4 py-2.5 text-left text-xs font-bold hover:bg-gray-50 border-b border-[#12170f]/5 transition-colors duration-300 ${s === o.status ? ORDER_STATUS_CLASSES[s].menu : 'text-[#12170f]'}">Mark as ${s}</button>`).join('');
+                <button role="menuitem" id="order-menu-${s.toLowerCase().replace(/ /g, '-')}-${o.id}" onclick="event.stopPropagation(); window.closeOrderActionsMenu(); window.handleOrderStatusSelect('${o.id}', '${s}')" class="block w-full px-4 py-2.5 text-left text-xs font-bold hover:bg-gray-50 border-b border-[#12170f]/5 transition-colors duration-300 ${s === o.status ? ORDER_STATUS_CLASSES[s].menu : 'text-[#12170f]'}">Mark as ${s}</button>`).join('');
 
             return `
             <tr id="order-row-${o.id}" class="transition-all duration-500 cursor-pointer ${isActiveRow ? 'bg-[#d4af37]/5 border-l-2 border-l-[#d4af37]' : 'hover:bg-gray-50/50 border-l-2 border-l-transparent'} group" onclick="window.handleOrderAction('${o.id}')">
@@ -427,11 +522,16 @@ window.handleOrderAction = function(id) {
     const classes = ORDER_STATUS_CLASSES[o.status] || ORDER_STATUS_CLASSES['Processing'];
 
     const badgeHtml = `
-        <div class="relative">
-            <select autocomplete="srk-no-autofill" id="order-drawer-status-${o.id}" onchange="updateOrderStatus('${o.id}', this.value)" class="appearance-none border ${classes.drawer} text-xs font-bold py-1.5 pl-3 pr-8 rounded-sm focus:outline-none cursor-pointer uppercase tracking-wider shadow-sm transition-colors duration-500 hover:brightness-95">
-                ${window.orderStatusOptions(o.status).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-            </select>
-            <svg class="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        <div class="flex items-center">
+            <div class="relative">
+                <select autocomplete="srk-no-autofill" id="order-drawer-status-${o.id}" onchange="window.handleOrderStatusSelect('${o.id}', this.value, this)" class="appearance-none border ${classes.drawer} text-xs font-bold py-1.5 pl-3 pr-8 rounded-sm focus:outline-none cursor-pointer uppercase tracking-wider shadow-sm transition-colors duration-500 hover:brightness-95">
+                    ${window.orderStatusOptions(o.status).map(s => `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+                </select>
+                <svg class="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            ${o.confirmedAt
+                ? `<span class="ml-2 text-[10px] font-bold text-green-700 uppercase tracking-wider whitespace-nowrap">Confirmed</span>`
+                : `<button onclick="window.confirmOrder('${o.id}')" class="ml-2 bg-[#12170f] text-white font-bold text-[11px] px-3 py-1.5 rounded-sm hover:bg-[#1f271b] transition-colors uppercase tracking-wider whitespace-nowrap">Confirm order</button>`}
         </div>`;
 
     const ICON_USER = 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z';
@@ -504,12 +604,20 @@ window.handleOrderAction = function(id) {
             ${o.payment && o.payment.status === 'Paid' && o.status === 'Cancelled' ? `
                 <div class="mb-4 flex items-start gap-3 bg-red-50 border border-red-300 rounded-sm p-4">
                     <svg class="w-5 h-5 shrink-0 mt-0.5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path></svg>
-                    <div>
+                    <div class="flex-1">
                         <p class="text-xs font-bold text-red-900 uppercase tracking-wider">Cancelled, but paid for</p>
                         <p class="text-xs text-red-900/80 font-semibold mt-1 leading-relaxed">
-                            Money was received against this order and it is marked Cancelled. Nothing in this dashboard refunds anything &mdash; a refund is an action in the Razorpay dashboard, and this site only records it when Razorpay reports it back. Check whether the customer is owed money.
+                            Money was received against this order and it is marked Cancelled. Nothing in this dashboard refunds anything &mdash; a refund is an action in the Razorpay dashboard. Once that is done there, record it here so the customer is told.
                         </p>
+                        ${o.refundCompletedAt
+                            ? `<p class="text-xs font-bold text-green-700 mt-3">Refund recorded &mdash; the customer has been notified.</p>`
+                            : `<button onclick="window.markOrderRefunded('${o.id}')" class="mt-3 bg-red-600 text-white font-bold text-xs px-4 py-2 rounded-sm hover:bg-red-700 transition-colors">Mark refund completed</button>`}
                     </div>
+                </div>` : ''}
+            ${o.status === 'Cancelled' && o.cancellationReason ? `
+                <div class="mb-4 bg-white p-4 rounded-sm border border-[#12170f]/10 shadow-sm">
+                    <p class="text-[10px] font-bold text-[#1f271b]/50 uppercase tracking-wider mb-1">Cancellation reason</p>
+                    <p class="text-sm text-[#12170f] font-semibold">${o.cancellationReason}</p>
                 </div>` : ''}
             ${o.payment
                 ? `<div class="bg-white p-5 rounded-sm border border-[#12170f]/10 shadow-sm space-y-2 text-sm">

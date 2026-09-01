@@ -126,7 +126,7 @@ view of `user_profiles` was never anything but administration.
 | `projects` | `upcoming_projects`, the section switch | 6 |
 | `categories` | `categories`, the image bucket | 4 |
 | `products` | `products`, `product_images` | 4 |
-| `orders` | fulfilment status and tracking | 2 |
+| `orders` | fulfilment status and tracking, order confirmation and refund records | 4 |
 | `customers` | accounts, suspension and deletion | 3 |
 | `dashboard` | bounded aggregate read model for the console home | 1 |
 

@@ -38,6 +38,8 @@
     "PATCH /api/categories/:id/status",
     "PATCH /api/customers/:id/status",
     "PATCH /api/enquiries/:id/status",
+    "PATCH /api/orders/:id/confirm",
+    "PATCH /api/orders/:id/refund",
     "PATCH /api/orders/:id/status",
     "PATCH /api/products/:id/status",
     "PATCH /api/projects/:id/visibility",

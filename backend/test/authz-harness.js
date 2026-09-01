@@ -101,6 +101,13 @@ const db = {
     // cart is invisible to another, and a fixture written by hand here would
     // let that pass without PUT /api/cart having stored anything.
     cart_items: [],
+    // Migration 008's notification log. Empty for the same reason as the two
+    // above: order-notifications.service.js inserts into this on every order
+    // update the fixtures exercise (most of them logging 'skipped', since the
+    // fixture orders below carry no buyer_phone/buyer_email and no test here
+    // configures WHATSAPP_ACCESS_TOKEN or RESEND_API_KEY), and an absent key
+    // would let those inserts land in a throwaway array without saying so.
+    order_notifications: [],
     products: [
         { id: 1, name: 'Fake Machine', url_slug: 'fake-machine', description: 'd', featured_description: null,
           price: '1000', category_id: 10, asset_folder: 'Fake Machine', is_active: true,

@@ -2,8 +2,12 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 module.exports = async function globalSetup() {
-    const server = spawn(process.execPath, [path.join(__dirname, '..', 'authz-harness.js')], {
+    const harness = process.env.SRK_TEST_BUILT_ASSETS === '1'
+        ? path.join(__dirname, 'built-assets-harness.js')
+        : path.join(__dirname, '..', 'authz-harness.js');
+    const server = spawn(process.execPath, [harness], {
         env: Object.assign({}, process.env, { HARNESS_PORT: '3557' }),
+        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
     });
 

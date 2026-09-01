@@ -10,7 +10,9 @@
     "build": "node tools/build-vercel-public.js",
     "verify": "npm --prefix backend run verify",
     "test": "npm --prefix backend test",
-    "test:all": "npm --prefix backend run test:all"
+    "test:build": "node --test tools/build-vercel-public.test.js",
+    "test:browser:built": "node tools/test-built-browser.js",
+    "test:all": "npm run test:build && npm --prefix backend run test:all && npm run test:browser:built"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.0",
@@ -21,5 +23,8 @@
     "express-session": "^1.19.0",
     "multer": "^2.2.0",
     "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }
